@@ -330,8 +330,8 @@ fun TableScreen(
 
     fun launchSelectionExport(includePhotos: Boolean) {
         val ts = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-        if (includePhotos) exportZipLauncher.launch("${ts}_openscale_selected_export.zip")
-        else exportCsvLauncher.launch("${ts}_openscale_selected_export.csv")
+        if (includePhotos) exportZipLauncher.launch("${ts}_myscale_selected_export.zip")
+        else exportCsvLauncher.launch("${ts}_myscale_selected_export.csv")
     }
 
     fun deleteSelectedItems() {

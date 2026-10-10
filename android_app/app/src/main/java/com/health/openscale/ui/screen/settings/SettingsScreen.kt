@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -44,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.health.openscale.R
@@ -90,6 +92,7 @@ fun SettingsScreen(
     val bluetoothLabel = stringResource(R.string.settings_item_bluetooth)
     val chartSettingsLabel = stringResource(R.string.settings_item_chart)
     val dataManagementLabel = stringResource(R.string.settings_item_data_management)
+    val healthConnectLabel = stringResource(R.string.settings_item_health_connect)
     val aboutLabel = stringResource(R.string.settings_item_about)
 
     val items = listOf(
@@ -128,6 +131,12 @@ fun SettingsScreen(
             icon = Icons.Filled.Storage,
             route = Routes.DATA_MANAGEMENT_SETTINGS,
             contentDescription = dataManagementLabel
+        ),
+        SettingsItem(
+            label = healthConnectLabel,
+            icon = ImageVector.vectorResource(R.drawable.ic_health_connect),
+            route = Routes.HEALTH_CONNECT_SETTINGS,
+            contentDescription = healthConnectLabel
         ),
         SettingsItem(
             label = aboutLabel,
@@ -176,7 +185,8 @@ fun SettingsScreen(
                     leadingContent = {
                         Icon(
                             imageVector = item.icon,
-                            contentDescription = item.contentDescription ?: item.label // Fallback CD
+                            contentDescription = item.contentDescription ?: item.label,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 )

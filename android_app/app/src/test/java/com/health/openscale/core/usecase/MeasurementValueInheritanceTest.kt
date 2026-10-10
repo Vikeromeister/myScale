@@ -78,7 +78,7 @@ class MeasurementValueInheritanceTest {
             File(app.cacheDir, "inheritance-${System.nanoTime()}.preferences_pb"),
         )
         val query = MeasurementQueryUseCases(repo)
-        val sync = SyncUseCases(app, MeasurementTypeCrudUseCases(repo, ApplicationProvider.getApplicationContext()))
+        val sync = SyncUseCases(com.health.openscale.core.healthconnect.HealthConnectManager(app, settings, repo))
         transformation = MeasurementTransformationUseCase(
             settings, UserUseCases(ApplicationProvider.getApplicationContext(), repo, settings, sync), query
         )

@@ -13,10 +13,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 package com.health.openscale
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -24,17 +26,26 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import com.health.openscale.core.bluetooth.BackgroundScaleScheduler
+import com.health.openscale.core.bluetooth.BackgroundScaleService
+import com.health.openscale.core.data.ConnectionStatus
+import com.health.openscale.core.facade.BluetoothFacade
 import com.health.openscale.core.facade.SettingsFacade
 import com.health.openscale.core.utils.LogManager
 import com.health.openscale.ui.navigation.AppNavigation
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.ui.theme.OpenScaleTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 
@@ -53,9 +64,21 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var settingsFacade: SettingsFacade
 
+    @Inject
+    lateinit var bluetoothFacade: BluetoothFacade
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        checkAndScheduleBackgroundWindow()
+        checkAndAutoConnectScale()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        checkAndRequestPermissions()
 
         setContent {
             // The main UI of the app.
@@ -98,6 +121,61 @@ class MainActivity : ComponentActivity() {
                 }
 
                 AppNavigation(sharedViewModel)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkAndScheduleBackgroundWindow()
+        checkAndAutoConnectScale()
+    }
+
+    private fun checkAndRequestPermissions() {
+        val permissions = mutableListOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val missing = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isNotEmpty()) {
+            permissionLauncher.launch(missing.toTypedArray())
+        } else {
+            checkAndScheduleBackgroundWindow()
+            checkAndAutoConnectScale()
+        }
+    }
+
+    private fun checkAndScheduleBackgroundWindow() {
+        lifecycleScope.launch {
+            val bgEnabled = settingsFacade.isBackgroundScaleSyncEnabled.first()
+            val hasScan = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+            val hasConnect = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            if (bgEnabled && hasScan && hasConnect) {
+                BackgroundScaleScheduler.scheduleNext(this@MainActivity)
+            }
+        }
+    }
+
+    private fun checkAndAutoConnectScale() {
+        lifecycleScope.launch {
+            val autoConnect = settingsFacade.autoConnectOnStartup.first()
+            val hasDevice = settingsFacade.observeSavedDevice().first() != null
+            val hasScan = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+            val hasConnect = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+
+            if (autoConnect && hasDevice && hasScan && hasConnect && bluetoothFacade.isBluetoothEnabled()) {
+                val status = bluetoothFacade.connectionStatus.value
+                if (status == ConnectionStatus.DISCONNECTED || status == ConnectionStatus.FAILED) {
+                    LogManager.i(TAG, "Auto-connecting to saved scale on app startup")
+                    bluetoothFacade.attemptAutoConnectToSavedDevice()
+                }
             }
         }
     }

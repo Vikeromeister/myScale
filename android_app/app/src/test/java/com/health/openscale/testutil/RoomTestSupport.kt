@@ -360,7 +360,8 @@ object RoomTestSupport {
 
     fun facadesFor(app: Application, repo: DatabaseRepository, settings: SettingsFacade): Facades {
         val typeCrud = MeasurementTypeCrudUseCases(repo, ApplicationProvider.getApplicationContext())
-        val sync = SyncUseCases(app, typeCrud)
+        val healthConnectManager = com.health.openscale.core.healthconnect.HealthConnectManager(ApplicationProvider.getApplicationContext(), settings, repo)
+        val sync = SyncUseCases(healthConnectManager)
         val userUseCases = UserUseCases(ApplicationProvider.getApplicationContext(), repo, settings, sync)
         val userFacade = UserFacade(userUseCases, UserGoalsUseCases(repo))
 
@@ -395,7 +396,8 @@ object RoomTestSupport {
 
     /** Wires the real [MeasurementCrudUseCases] graph (same constructors as production) over [repo]. */
     fun measurementCrudFor(app: Application, repo: DatabaseRepository, settings: SettingsFacade): MeasurementCrudUseCases {
-        val sync = SyncUseCases(app, MeasurementTypeCrudUseCases(repo, ApplicationProvider.getApplicationContext()))
+        val healthConnectManager = com.health.openscale.core.healthconnect.HealthConnectManager(ApplicationProvider.getApplicationContext(), settings, repo)
+        val sync = SyncUseCases(healthConnectManager)
         val userUseCases = UserUseCases(ApplicationProvider.getApplicationContext(), repo, settings, sync)
         val query = MeasurementQueryUseCases(repo)
         val transformation = MeasurementTransformationUseCase(settings, userUseCases, query)

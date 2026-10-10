@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <!-- openScale works fully offline: strip network access even if a library declares it. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
@@ -19,10 +21,20 @@
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>
 
+    <uses-permission android:name="android.permission.health.WRITE_BODY_FAT" tools:ignore="HealthConnectPolicy" />
+    <uses-permission android:name="android.permission.health.WRITE_BODY_WATER_MASS" tools:ignore="HealthConnectPolicy" />
+    <uses-permission android:name="android.permission.health.WRITE_WEIGHT" tools:ignore="HealthConnectPolicy" />
+    <uses-permission android:name="android.permission.health.WRITE_BASAL_METABOLIC_RATE" tools:ignore="HealthConnectPolicy" />
+    <uses-permission android:name="android.permission.health.WRITE_LEAN_BODY_MASS" tools:ignore="HealthConnectPolicy" />
+    <uses-permission android:name="android.permission.health.WRITE_BONE_MASS" tools:ignore="HealthConnectPolicy" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" tools:ignore="HealthConnectPolicy"/>
+    <uses-permission android:name="android.permission.health.READ_BODY_FAT" tools:ignore="HealthConnectPolicy"/>
+    <uses-permission android:name="android.permission.health.READ_BODY_WATER_MASS" tools:ignore="HealthConnectPolicy"/>
+    <uses-permission android:name="android.permission.health.READ_BONE_MASS" tools:ignore="HealthConnectPolicy"/>
+    <uses-permission android:name="android.permission.health.READ_LEAN_BODY_MASS" tools:ignore="HealthConnectPolicy"/>
+
     <queries>
-        <package android:name="com.health.openscale.sync.debug" />
-        <package android:name="com.health.openscale.sync.oss" />
-        <package android:name="com.health.openscale.sync" />
+        <package android:name="com.google.android.apps.healthdata" />
     </queries>
 
     <application
@@ -78,6 +90,19 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <service
+            android:name=".core.bluetooth.BackgroundScaleService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+        <receiver
+            android:name=".core.bluetooth.BackgroundScaleReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.health.openscale.ACTION_START_SCHEDULED_WINDOW" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name="com.health.openscale.ui.widget.MeasurementWidgetReceiver"
             android:exported="true">
@@ -96,6 +121,25 @@
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ui.permission.PermissionsRationaleActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:theme="@style/Theme.OpenScale">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".ui.permission.PermissionsRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
     </application>
 
 </manifest>

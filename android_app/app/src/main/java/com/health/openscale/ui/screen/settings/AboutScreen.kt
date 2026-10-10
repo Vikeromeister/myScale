@@ -149,6 +149,12 @@ fun AboutScreen(
             fontWeight = FontWeight.Bold
         )
         InfoListItem(
+            headlineText = "Forked from openScale",
+            supportingText = "Tailored for Xiaomi Body Composition Scale 2 & Health Connect",
+            leadingIconVector = Icons.Filled.Timeline,
+            leadingIconContentDescription = "Fork info"
+        )
+        InfoListItem(
             headlineText = "olie.xdev",
             supportingText = stringResource(R.string.maintainer_label),
             leadingIconVector = Icons.Filled.Business,

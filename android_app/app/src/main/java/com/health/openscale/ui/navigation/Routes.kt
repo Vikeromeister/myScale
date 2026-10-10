@@ -52,6 +52,7 @@ object Routes {
     const val BLUETOOTH_DETAIL = "settings/bluetoothDetail"
     const val CHART_SETTINGS = "settings/chart"
     const val DATA_MANAGEMENT_SETTINGS = "settings/dataManagement"
+    const val HEALTH_CONNECT_SETTINGS = "settings/healthConnect"
     const val ABOUT_SETTINGS = "settings/about"
     const val TABLE_DRILLDOWN = "table_drilldown?start={start}&end={end}"
     const val MEASUREMENT_COMPARISON = "measurement_comparison?start={start}&end={end}&level={level}"

@@ -17,15 +17,13 @@
  */
 package com.health.openscale.core.usecase
 
-import android.app.Application
-import android.content.ComponentName
-import android.content.Intent
-import androidx.core.content.ContextCompat
+import android.content.Context
 import com.health.openscale.core.data.InputFieldType
 import com.health.openscale.core.data.Measurement
 import com.health.openscale.core.data.MeasurementType
 import com.health.openscale.core.data.MeasurementValue
 import com.health.openscale.core.data.UnitType
+import com.health.openscale.core.healthconnect.HealthConnectManager
 import com.health.openscale.core.utils.ConverterUtils
 import com.health.openscale.core.utils.LogManager
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -39,211 +37,77 @@ import javax.inject.Singleton
 import kotlin.math.roundToInt
 
 /**
- * Bundles sync trigger use cases for the external SyncService.
- *
- * Starts a foreground service via explicit component to notify external sync packages
- * about inserts/updates/deletes of measurements.
- *
- * Expected service component: `com.health.openscale.sync.core.service.SyncService`
- * in the target package (e.g. `com.health.openscale.sync`, `com.health.openscale.sync.oss`).
+ * Bundles sync trigger use cases for native Google Health Connect sync.
  */
 @Singleton
 class SyncUseCases @Inject constructor(
-    private val application: Application,
-    private val measurementTypeUseCases: MeasurementTypeCrudUseCases
+    private val healthConnectManager: HealthConnectManager
 ) {
     private val _syncAppUnreachable = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    @Volatile private var lastUnreachableEmit = 0L
-
 
     /**
-     * Triggers an **insert** sync event for [measurement] with its [values] to the given [pkgName].
-     *
-     * Extras:
-     * - "mode" = "insert"
-     * - "userId" = measurement.userId
-     * - "date" = measurement.timestamp (epoch millis)
-     * - optionally "weight", "fat", "water", "muscle" if present among [values]
+     * Triggers an insert sync event for [measurement] to Health Connect.
      */
     suspend fun triggerSyncInsert(
         measurement: Measurement,
-        values: List<MeasurementValue>,
-        pkgName: String
+        values: List<MeasurementValue> = emptyList(),
+        pkgName: String = ""
     ): Result<Unit> = runCatching {
-        val intent = Intent().apply {
-            component = ComponentName(pkgName, SYNC_SERVICE_CLASS)
-            putExtra("mode", "insert")
-            putExtra("id", measurement.id)
-            putExtra("userId", measurement.userId)
-            putExtra("date", measurement.timestamp)
-            putGenericValues(values)
-        }
-        startSyncService(pkgName, intent)
+        healthConnectManager.syncMeasurementInsert(measurement.id, measurement.userId)
     }
 
     /**
-     * Triggers an **update** sync event for [measurement] with its [values] to the given [pkgName].
-     *
-     * Extras:
-     * - "mode" = "update"
-     * - "userId" = measurement.userId
-     * - "date" = measurement.timestamp (epoch millis)
-     * - optionally "weight", "fat", "water", "muscle" if present among [values]
+     * Triggers an update sync event for [measurement] to Health Connect.
      */
     suspend fun triggerSyncUpdate(
         measurement: Measurement,
-        values: List<MeasurementValue>,
-        pkgName: String
+        values: List<MeasurementValue> = emptyList(),
+        pkgName: String = ""
     ): Result<Unit> = runCatching {
-        val intent = Intent().apply {
-            component = ComponentName(pkgName, SYNC_SERVICE_CLASS)
-            putExtra("mode", "update")
-            putExtra("id", measurement.id)
-            putExtra("userId", measurement.userId)
-            putExtra("date", measurement.timestamp)
-            putGenericValues(values)
-        }
-        startSyncService(pkgName, intent)
+        healthConnectManager.syncMeasurementUpdate(measurement.id, measurement.userId)
     }
 
     /**
-     * Triggers a **delete** sync event for the given [id] / [userId] + [date] to the target [pkgName].
-     *
-     * Extras:
-     * - "mode" = "delete"
-     * - "id" = stable measurement id (lets the sync side forget the exact ledger entry)
-     * - "userId" = owning user id (for multi-user routing on the sync side)
-     * - "date" = [Date.getTime] (epoch millis)
+     * Triggers a delete sync event for the given [id] / [userId] + [date] to Health Connect.
      */
-    fun triggerSyncDelete(
+    suspend fun triggerSyncDelete(
         id: Int,
         userId: Int,
         date: Date,
-        pkgName: String
+        pkgName: String = ""
     ): Result<Unit> = runCatching {
-        val intent = Intent().apply {
-            component = ComponentName(pkgName, SYNC_SERVICE_CLASS)
-            putExtra("mode", "delete")
-            putExtra("id", id)
-            putExtra("userId", userId)
-            putExtra("date", date.time)
-        }
-        startSyncService(pkgName, intent)
+        healthConnectManager.syncMeasurementDelete(date.time, userId)
     }
 
     /**
-     * Triggers a **clear** sync event to wipe the synced measurements of [userId] on [pkgName].
-     *
-     * Extras:
-     * - "mode" = "clear"
-     * - "userId" = the user whose measurements were cleared
+     * Triggers a clear sync event to wipe synced measurements of [userId] on Health Connect.
      */
-    fun triggerSyncClear(
+    suspend fun triggerSyncClear(
         userId: Int,
-        pkgName: String
+        pkgName: String = ""
     ): Result<Unit> = runCatching {
-        val intent = Intent().apply {
-            component = ComponentName(pkgName, SYNC_SERVICE_CLASS)
-            putExtra("mode", "clear")
-            putExtra("userId", userId)
-        }
-        startSyncService(pkgName, intent)
+        healthConnectManager.syncClear(userId)
     }
 
     /**
-     * Coalesced **changed** wake-up (no payload) for bulk operations (CSV import / backup restore):
-     * the sync app reconciles its full state against openScale instead of receiving hundreds of
-     * individual events. Avoids foreground-service spam.
+     * Coalesced changed wake-up for bulk operations (CSV import / backup restore).
      */
-    fun triggerSyncChanged(
-        pkgName: String
+    suspend fun triggerSyncChanged(
+        pkgName: String = ""
     ): Result<Unit> = runCatching {
-        val intent = Intent().apply {
-            component = ComponentName(pkgName, SYNC_SERVICE_CLASS)
-            putExtra("mode", "changed")
-        }
-        startSyncService(pkgName, intent)
+        triggerSyncChangedAll()
     }
 
-    /** Convenience: fire a coalesced "changed" wake to all known sync app variants. */
-    fun triggerSyncChangedAll() {
-        SYNC_PACKAGES.forEach { triggerSyncChanged(it) }
+    /** Convenience: fire a full sync of all measurements to Health Connect. */
+    suspend fun triggerSyncChangedAll(): Result<Unit> = runCatching {
+        if (!healthConnectManager.isExportEnabled()) return@runCatching
+        val targetUser = healthConnectManager.getEffectiveUserId()
+        healthConnectManager.syncAll(targetUser)
     }
 
-    /**
-     * Emits the package name of a sync app that is **installed but could not be woken** (the
-     * foreground-service start failed — typically because the OEM/user force-stopped it). The UI
-     * shows an unobtrusive "please open openScale-sync" hint with an Open action ([openSyncApp]).
-     */
     val syncAppUnreachable: SharedFlow<String> = _syncAppUnreachable.asSharedFlow()
 
-    /** Launches an installed sync app (clears its FLAG_STOPPED so future pushes work again). */
-    fun openSyncApp(pkgName: String) {
-        runCatching {
-            application.packageManager.getLaunchIntentForPackage(pkgName)
-                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                ?.let { application.startActivity(it) }
-        }
-    }
-
-    // --- helpers ---
-
-    /** Pre-check: only start a sync app that is actually installed (avoids FGS-start exceptions
-     *  and log spam when a variant isn't present). Requires the <queries> entries in the manifest. */
-    private fun isSyncAppInstalled(pkgName: String): Boolean = try {
-        application.packageManager.getPackageInfo(pkgName, 0)
-        true
-    } catch (_: Exception) {
-        false
-    }
-
-    /**
-     * Starts an installed sync app's foreground service. If the start fails although the app is
-     * installed (force-stopped / blocked), emits [syncAppUnreachable] (rate-limited) so the UI can
-     * nudge the user to open it.
-     */
-    private fun startSyncService(pkgName: String, intent: Intent) {
-        if (!isSyncAppInstalled(pkgName)) return
-
-        // Name ourselves on every op. Several openScale flavors can sit on one device and they all
-        // address the same sync app, but a measurement id only means something within one install —
-        // so the sync app has to be able to drop ops from the variant it is not synced with. Added
-        // here rather than in each trigger, so a future one cannot forget it.
-        intent.putExtra("package", application.packageName)
-
-        try {
-            ContextCompat.startForegroundService(application.applicationContext, intent)
-        } catch (e: Exception) {
-            LogManager.w("SyncUseCases", "Sync app $pkgName installed but not startable (force-stopped?): ${e.message}")
-            val now = System.currentTimeMillis()
-            if (now - lastUnreachableEmit > 60 * 60 * 1000L) { // at most hourly
-                lastUnreachableEmit = now
-                _syncAppUnreachable.tryEmit(pkgName)
-            }
-        }
-    }
-
-    /**
-     * Adds the full, self-describing generic value set as a JSON "values" extra (Phase 2): every
-     * MeasurementValue with its type metadata (key/name/unit/inputType/isDerived), the numeric value
-     * already converted to the dimension's canonical base unit, unit as a UCUM code. Custom types
-     * ride along (key=="CUSTOM", distinguished by typeId). Lets the sync app forward all predefined types +
-     * custom without knowing openScale's enums.
-     */
-    private suspend fun Intent.putGenericValues(values: List<MeasurementValue>) {
-        val typesById = runCatching { measurementTypeUseCases.getAll() }.getOrNull()
-            ?.associateBy { it.id } ?: return
-        putExtra("values", GenericValueJson.build(values, typesById))
-    }
-
-    private companion object {
-        const val SYNC_SERVICE_CLASS = "com.health.openscale.sync.core.service.SyncService"
-        val SYNC_PACKAGES = listOf(
-            "com.health.openscale.sync",
-            "com.health.openscale.sync.oss",
-            "com.health.openscale.sync.debug"
-        )
-    }
+    fun openSyncApp(pkgName: String) {}
 }
 
 /**

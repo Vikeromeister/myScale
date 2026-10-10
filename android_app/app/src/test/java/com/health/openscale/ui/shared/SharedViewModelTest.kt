@@ -89,7 +89,7 @@ class SharedViewModelTest {
             scope, File(app.cacheDir, "shared-${System.nanoTime()}.preferences_pb")
         )
         val facades = RoomTestSupport.facadesFor(app, repo, settings)
-        val sync = SyncUseCases(app, MeasurementTypeCrudUseCases(repo, ApplicationProvider.getApplicationContext()))
+        val sync = SyncUseCases(com.health.openscale.core.healthconnect.HealthConnectManager(app, settings, repo))
         vm = SharedViewModel(
             facades.userFacade, facades.measurementFacade, facades.dataManagementFacade, settings, sync, app,
         )

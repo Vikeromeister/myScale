@@ -20,6 +20,8 @@ package com.health.openscale.core.worker
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.health.openscale.core.bluetooth.BackgroundScaleService
+import com.health.openscale.core.facade.SettingsFacade
 import com.health.openscale.core.usecase.AutoBackupUseCases
 import com.health.openscale.core.usecase.ReminderUseCase
 import dagger.hilt.android.EntryPointAccessors
@@ -28,10 +30,12 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * BootReceiver – ensures reminders are rescheduled after a device reboot.
+ * BootReceiver – ensures reminders are rescheduled and background scale service
+ * is restarted after a device reboot.
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -40,10 +44,12 @@ class BootReceiver : BroadcastReceiver() {
             val entryPoint = EntryPointAccessors.fromApplication(appContext, BootReceiverEntryPoint::class.java)
             val reminderUseCase = entryPoint.reminderUseCase()
             val autoBackupUseCases = entryPoint.autoBackupUseCases()
+            val settingsFacade = entryPoint.settingsFacade()
 
             CoroutineScope(Dispatchers.Default).launch {
                 reminderUseCase.rescheduleNext()
                 autoBackupUseCases.refreshSchedule()
+                com.health.openscale.core.bluetooth.BackgroundScaleScheduler.scheduleNext(appContext)
             }
         }
     }
@@ -54,4 +60,5 @@ class BootReceiver : BroadcastReceiver() {
 interface BootReceiverEntryPoint {
     fun reminderUseCase(): ReminderUseCase
     fun autoBackupUseCases(): AutoBackupUseCases
+    fun settingsFacade(): SettingsFacade
 }

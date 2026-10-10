@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import com.health.openscale.core.bluetooth.BackgroundScaleService
 import com.health.openscale.core.bluetooth.BluetoothEvent
 import com.health.openscale.core.bluetooth.ScaleFactory
 import com.health.openscale.core.bluetooth.data.ScaleUser
@@ -142,7 +143,7 @@ class BluetoothFacadeImpl @Inject constructor(
 
     override val savedDevice: StateFlow<ScannedDeviceInfo?> =
         settingsFacade.observeSavedDevice()
-            .stateIn(scope, SharingStarted.WhileSubscribed(5000), null)
+            .stateIn(scope, SharingStarted.Eagerly, null)
 
     // internal only (used by savedDeviceSupport); not part of the public interface
     val savedTuningProfile: StateFlow<TuningProfile> =
@@ -190,9 +191,10 @@ class BluetoothFacadeImpl @Inject constructor(
         scope.launch {
             userFacade.observeSelectedUser()
                 .collect { user ->
-                    currentAppUser.value = user
-                    currentBtScaleUser.value = user?.let { toScaleUser(it) }
-                    LogManager.i(TAG, "User context updated -> ${user?.name ?: "none"}")
+                    val resolved = user ?: userFacade.observeAllUsers().first().firstOrNull()
+                    currentAppUser.value = resolved
+                    currentBtScaleUser.value = resolved?.let { toScaleUser(it) }
+                    LogManager.i(TAG, "User context updated -> ${resolved?.name ?: "none"}")
                 }
         }
     }
@@ -216,7 +218,7 @@ class BluetoothFacadeImpl @Inject constructor(
 
     override fun connectToSavedDevice() {
         scope.launch {
-            val dev = savedDevice.value
+            val dev = savedDevice.value ?: settingsFacade.observeSavedDevice().first()
             if (dev == null) {
                 LogManager.d(TAG, "No saved device snapshot found.")
                 return@launch
@@ -254,11 +256,16 @@ class BluetoothFacadeImpl @Inject constructor(
     override fun saveAsPreferred(device: ScannedDeviceInfo) {
         scope.launch {
             settingsFacade.saveSavedDevice(device)
+            val bgEnabled = settingsFacade.isBackgroundScaleSyncEnabled.first()
+            if (bgEnabled) {
+                BackgroundScaleService.start(application)
+            }
         }
     }
 
     override fun removeSavedDevice() {
         scope.launch {
+            BackgroundScaleService.stop(application)
             settingsFacade.clearSavedBluetoothScale()
             settingsFacade.clearBleDriverSettings()
             settingsFacade.saveBluetoothTuneProfile(null)

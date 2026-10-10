@@ -31,9 +31,11 @@ coroutinesTest = "1.11.0"
 androidxTestCore = "1.7.0"
 androidxTestRunner = "1.7.0"
 espresso = "3.7.0"
+healthConnect = "1.1.0"
 
 
 [libraries]
+androidx-health-connect-client = { group = "androidx.health.connect", name = "connect-client", version.ref = "healthConnect" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }

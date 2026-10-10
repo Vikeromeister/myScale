@@ -67,7 +67,8 @@ class BackupRestoreUseCasesTest {
     @Before
     fun setUp() = runBlocking {
         baseContext = ApplicationProvider.getApplicationContext()
-        sandboxRoot = File(baseContext.cacheDir, "backup-restore-test-${System.nanoTime()}").apply {
+        sandboxRoot = File(baseContext.cacheDir, "t_${System.currentTimeMillis() % 10000}").apply {
+            deleteRecursively()
             mkdirs()
         }
 
@@ -93,7 +94,8 @@ class BackupRestoreUseCasesTest {
             produceFile = { File(sandboxRoot, "settings.preferences_pb") }
         )
         val settings = SettingsFacadeImpl(dataStore)
-        val sync = SyncUseCases(baseContext as Application, MeasurementTypeCrudUseCases(repository, ApplicationProvider.getApplicationContext()))
+        val healthConnectManager = com.health.openscale.core.healthconnect.HealthConnectManager(baseContext, settings, repository)
+        val sync = SyncUseCases(healthConnectManager)
         useCases = BackupRestoreUseCases(sandboxContext, repository, settings, sync)
 
         repository.insertUser(

@@ -85,8 +85,10 @@ class MiScaleHandler : ScaleDeviceHandler() {
     private val CHAR_CURRENT_TIME = uuid16(0x2A2B)
     private val CHAR_WEIGHT_MEAS  = uuid16(0x2A9D) // usually absent on Mi
 
-    // Mi vendor service (v2 only)
-    private val SERVICE_MI_CFG    = UUID.fromString("00001530-0000-3512-2118-0009af100700")
+    companion object {
+        val SERVICE_MI_CFG = UUID.fromString("00001530-0000-3512-2118-0009af100700")
+    }
+
     private val CHAR_MI_CONFIG    = UUID.fromString("00001542-0000-3512-2118-0009af100700")
 
     // Mi history stream (notify + control)
@@ -187,33 +189,24 @@ class MiScaleHandler : ScaleDeviceHandler() {
         val name = device.name.uppercase(Locale.ROOT)
         val services = device.serviceUuids
 
-        val isKnownName = when {
-            name.startsWith("MIBCS") || name.startsWith("MIBFS") -> true
-            name == "MI SCALE2" || name.startsWith("MI_SCALE") -> true
+        val isKnownV2Name = when {
+            name.startsWith("MIBCS") || name.startsWith("MIBFS") || name == "MI SCALE2" -> true
             else -> false
         }
-        if (!isKnownName) return null
+        val looksV2 = services.any { it == SERVICE_MI_CFG } || isKnownV2Name
+        if (!looksV2) return null
 
-        val looksV2 = services.any { it == SERVICE_MI_CFG } ||
-                name == "MIBCS" || name == "MIBFS" || name == "MI SCALE2"
-        variant = if (looksV2) Variant.V2 else Variant.V1
+        variant = Variant.V2
 
-        val display = if (variant == Variant.V2) "Xiaomi Mi Scale v2" else "Xiaomi Mi Scale v1"
+        val display = "Xiaomi Body Composition Scale 2"
 
-        val capabilities = when (variant) {
-            Variant.V1 -> setOf(
-                DeviceCapability.LIVE_WEIGHT_STREAM,
-                DeviceCapability.HISTORY_READ,
-                DeviceCapability.TIME_SYNC
-            )
-            Variant.V2 -> setOf(
-                DeviceCapability.LIVE_WEIGHT_STREAM,
-                DeviceCapability.HISTORY_READ,
-                DeviceCapability.TIME_SYNC,
-                DeviceCapability.UNIT_CONFIG,
-                DeviceCapability.BODY_COMPOSITION
-            )
-        }
+        val capabilities = setOf(
+            DeviceCapability.LIVE_WEIGHT_STREAM,
+            DeviceCapability.HISTORY_READ,
+            DeviceCapability.TIME_SYNC,
+            DeviceCapability.UNIT_CONFIG,
+            DeviceCapability.BODY_COMPOSITION
+        )
 
         return DeviceSupport(
             displayName = display,

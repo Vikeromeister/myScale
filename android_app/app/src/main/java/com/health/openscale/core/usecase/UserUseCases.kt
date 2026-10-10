@@ -131,9 +131,7 @@ class UserUseCases @Inject constructor(
 
     /** Delete all measurements for the given user. Returns number of deleted rows. */
     suspend fun purgeMeasurementsForUser(userId: Int): Result<Int> = runCatching {
-        sync.triggerSyncClear(userId, "com.health.openscale.sync")
-        sync.triggerSyncClear(userId, "com.health.openscale.sync.oss")
-        sync.triggerSyncClear(userId, "com.health.openscale.sync.debug")
+        sync.triggerSyncClear(userId)
         val images = imageFileNamesForUser(userId)
         databaseRepository.deleteAllMeasurementsForUser(userId).also {
             MeasurementCrudUseCases.deleteImageFiles(appContext, images)

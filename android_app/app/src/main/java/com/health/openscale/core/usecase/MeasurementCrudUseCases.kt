@@ -87,9 +87,7 @@ class MeasurementCrudUseCases @Inject constructor(
                 databaseRepository.insertMeasurementValue(v.copy(measurementId = newId))
             }
 
-            sync.triggerSyncInsert(measurementWithId, finalValues,"com.health.openscale.sync")
-            sync.triggerSyncInsert(measurementWithId, finalValues,"com.health.openscale.sync.oss")
-            sync.triggerSyncInsert(measurementWithId, finalValues,"com.health.openscale.sync.debug")
+            sync.triggerSyncInsert(measurementWithId, finalValues)
 
             MeasurementWidget.refreshAll(appContext)
 
@@ -140,9 +138,7 @@ class MeasurementCrudUseCases @Inject constructor(
 
             deleteImageFiles(appContext, previousImages - imageFileNames(finalValues))
 
-            sync.triggerSyncUpdate(measurement, finalValues, "com.health.openscale.sync")
-            sync.triggerSyncUpdate(measurement, finalValues,"com.health.openscale.sync.oss")
-            sync.triggerSyncUpdate(measurement, finalValues,"com.health.openscale.sync.debug")
+            sync.triggerSyncUpdate(measurement, finalValues)
 
             MeasurementWidget.refreshAll(appContext)
 
@@ -165,9 +161,7 @@ class MeasurementCrudUseCases @Inject constructor(
         val images = imageFileNames(databaseRepository.getValuesForMeasurement(measurement.id).first())
         databaseRepository.deleteMeasurement(measurement)
         deleteImageFiles(appContext, images)
-        sync.triggerSyncDelete(measurement.id, measurement.userId, Date(measurement.timestamp), "com.health.openscale.sync")
-        sync.triggerSyncDelete(measurement.id, measurement.userId, Date(measurement.timestamp), "com.health.openscale.sync.oss")
-        sync.triggerSyncDelete(measurement.id, measurement.userId, Date(measurement.timestamp), "com.health.openscale.sync.debug")
+        sync.triggerSyncDelete(measurement.id, measurement.userId, Date(measurement.timestamp))
 
         MeasurementWidget.refreshAll(appContext)
     }

@@ -112,7 +112,8 @@ class BackupRestoreUseCases @Inject constructor(
         val restored = mutableListOf<String>()
         // Restore into a temporary workspace first so the live database is untouched
         // until the incoming payload has been staged and validated.
-        val restoreSessionDir = File(dbDir, "$dbName.restore-${System.currentTimeMillis()}").apply {
+        val restoreSessionDir = File(dbDir, ".restore").apply {
+            deleteRecursively()
             mkdirs()
         }
         val stagingDir = File(restoreSessionDir, "staging").apply { mkdirs() }
@@ -365,9 +366,6 @@ class BackupRestoreUseCases @Inject constructor(
                         tableNames += it.getString(0)
                     }
                 }
-
-                // Accept both the current Room schema and the legacy schema that older
-                // openScale backups may still contain.
                 tableNames.containsAll(CURRENT_OPEN_SCALE_TABLES) ||
                     tableNames.containsAll(LEGACY_OPEN_SCALE_TABLES)
             } finally {

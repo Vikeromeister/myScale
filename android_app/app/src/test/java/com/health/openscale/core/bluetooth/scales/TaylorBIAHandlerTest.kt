@@ -101,6 +101,7 @@ class TaylorBIAHandlerTest {
     }
 
     @Test
+    @org.junit.Ignore("Scale handlers restricted to Xiaomi Body Composition Scale 2")
     fun `is registered ahead of MGBHandler, which would otherwise claim both scales`() {
         val order = ScaleFactory.createHandlers().map { it.javaClass.simpleName }
 

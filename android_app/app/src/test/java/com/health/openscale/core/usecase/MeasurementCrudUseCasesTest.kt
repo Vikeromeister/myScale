@@ -272,7 +272,7 @@ class MeasurementCrudUseCasesTest {
             File(app.cacheDir, "crud-user-${System.nanoTime()}.preferences_pb"),
         )
         val userUseCases = UserUseCases(
-            app, repo, settings, SyncUseCases(app, MeasurementTypeCrudUseCases(repo, app))
+            app, repo, settings, SyncUseCases(com.health.openscale.core.healthconnect.HealthConnectManager(app, settings, repo))
         )
         val purged = createPhoto()
         saveWithPhoto(photoType.id, purged, timestamp = 6_000L)

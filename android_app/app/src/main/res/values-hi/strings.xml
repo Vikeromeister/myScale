@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- App & General -->
-    <string name="app_name" translatable="false">openScale</string>
+    <string name="app_name" translatable="false">myScale</string>
     <string name="sync_app_unreachable_hint">पिछला बदलाव सिंक नहीं हुआ था। कृपया openScale-sync खोलें और मैन्युअल सिंक चलाएं।</string>
     <string name="sync_app_open_action">खोलें</string>
     <string name="app_logo_content_description">ऐप लोगो</string>

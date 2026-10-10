@@ -76,7 +76,9 @@ class ImportExportUseCasesTest {
         db = RoomTestSupport.inMemory(context)
         repo = RoomTestSupport.repositoryFor(db)
         repo.insertAllMeasurementTypes(MeasurementType.seedRows())
-        val sync = SyncUseCases(context as Application, MeasurementTypeCrudUseCases(repo, ApplicationProvider.getApplicationContext()))
+        val settings = com.health.openscale.core.facade.SettingsFacadeImpl(androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(produceFile = { File(context.cacheDir, "test_${System.nanoTime()}.preferences_pb") }))
+        val healthConnectManager = com.health.openscale.core.healthconnect.HealthConnectManager(context, settings, repo)
+        val sync = SyncUseCases(healthConnectManager)
         useCases = ImportExportUseCases(context, repo, sync)
 
         userId = db.userDao().insert(

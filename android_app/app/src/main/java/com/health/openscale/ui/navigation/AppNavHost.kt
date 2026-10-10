@@ -309,6 +309,7 @@ private val settingsCategoryRoutes = listOf(
     Routes.BLUETOOTH_SETTINGS,
     Routes.CHART_SETTINGS,
     Routes.DATA_MANAGEMENT_SETTINGS,
+    Routes.HEALTH_CONNECT_SETTINGS,
     Routes.ABOUT_SETTINGS,
 )
 
@@ -342,6 +343,9 @@ private fun SettingsCategoryScreen(
         )
         Routes.CHART_SETTINGS -> ChartSettingsScreen(sharedViewModel = sharedViewModel)
         Routes.DATA_MANAGEMENT_SETTINGS -> DataManagementSettingsScreen(settingsViewModel = settingsViewModel)
+        Routes.HEALTH_CONNECT_SETTINGS -> com.health.openscale.ui.screen.settings.HealthConnectSettingsScreen(
+            sharedViewModel = sharedViewModel
+        )
         Routes.ABOUT_SETTINGS -> AboutScreen(
             navController = navController,
             sharedViewModel = sharedViewModel

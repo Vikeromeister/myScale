@@ -127,6 +127,17 @@ object SettingsPreferenceKeys {
     val BODY_WATER_FORMULA_OPTION = stringPreferencesKey("body_water_formula_option")
     val LBM_FORMULA_OPTION        = stringPreferencesKey("lbm_formula_option")
 
+    // Health Connect Settings
+    val HEALTH_CONNECT_SYNC_ENABLED = booleanPreferencesKey("health_connect_sync_enabled")
+    val HEALTH_CONNECT_SYNC_DIRECTION = stringPreferencesKey("health_connect_sync_direction")
+    val HEALTH_CONNECT_USER_ID = intPreferencesKey("health_connect_user_id")
+    val HEALTH_CONNECT_LAST_SYNC_TIME = longPreferencesKey("health_connect_last_sync_time")
+    val BACKGROUND_SCALE_SYNC_ENABLED = booleanPreferencesKey("background_scale_sync_enabled")
+    val BACKGROUND_SYNC_WINDOW_START_HOUR = intPreferencesKey("background_sync_window_start_hour")
+    val BACKGROUND_SYNC_WINDOW_START_MINUTE = intPreferencesKey("background_sync_window_start_minute")
+    val BACKGROUND_SYNC_WINDOW_DURATION_MINUTES = intPreferencesKey("background_sync_window_duration_minutes")
+    val BACKGROUND_SYNC_LAST_MEASURED_DATE = stringPreferencesKey("background_sync_last_measured_date")
+
     // Context strings for screen-specific settings (can be used as prefixes for dynamic keys)
     const val OVERVIEW_SCREEN_CONTEXT = "overview_screen"
     const val GRAPH_SCREEN_CONTEXT = "graph_screen"
@@ -308,6 +319,34 @@ interface SettingsFacade {
      */
     val developerModeEnabled: Flow<Boolean>
     suspend fun setDeveloperModeEnabled(enabled: Boolean)
+
+    // Health Connect Sync Settings
+    val healthConnectSyncEnabled: Flow<Boolean>
+    suspend fun setHealthConnectSyncEnabled(enabled: Boolean)
+
+    val healthConnectSyncDirection: Flow<String>
+    suspend fun setHealthConnectSyncDirection(direction: String)
+
+    val healthConnectUserId: Flow<Int>
+    suspend fun setHealthConnectUserId(userId: Int)
+
+    val healthConnectLastSyncTime: Flow<Long>
+    suspend fun setHealthConnectLastSyncTime(timestamp: Long)
+
+    val isBackgroundScaleSyncEnabled: Flow<Boolean>
+    suspend fun setBackgroundScaleSyncEnabled(enabled: Boolean)
+
+    val backgroundSyncWindowStartHour: Flow<Int>
+    suspend fun setBackgroundSyncWindowStartHour(hour: Int)
+
+    val backgroundSyncWindowStartMinute: Flow<Int>
+    suspend fun setBackgroundSyncWindowStartMinute(minute: Int)
+
+    val backgroundSyncWindowDurationMinutes: Flow<Int>
+    suspend fun setBackgroundSyncWindowDurationMinutes(minutes: Int)
+
+    val backgroundSyncLastMeasuredDate: Flow<String?>
+    suspend fun setBackgroundSyncLastMeasuredDate(date: String?)
 
     // Generic Settings Accessors
     /**
@@ -645,7 +684,7 @@ class SettingsFacadeImpl @Inject constructor(
 
     override val autoConnectOnStartup: Flow<Boolean> = observeSetting(
         SettingsPreferenceKeys.SAVED_BLUETOOTH_AUTO_CONNECT.name,
-        false
+        true
     )
 
     override suspend fun setAutoConnectOnStartup(enabled: Boolean) {
@@ -1091,6 +1130,91 @@ class SettingsFacadeImpl @Inject constructor(
     override suspend fun setSelectedLbmFormula(option: LbmFormulaOption) {
         LogManager.d(TAG, "Setting LBM_FORMULA_OPTION to: ${option.name}")
         saveSetting(SettingsPreferenceKeys.LBM_FORMULA_OPTION.name, option.name)
+    }
+
+    override val healthConnectSyncEnabled: Flow<Boolean> = observeSetting(
+        SettingsPreferenceKeys.HEALTH_CONNECT_SYNC_ENABLED.name,
+        true
+    )
+
+    override suspend fun setHealthConnectSyncEnabled(enabled: Boolean) {
+        saveSetting(SettingsPreferenceKeys.HEALTH_CONNECT_SYNC_ENABLED.name, enabled)
+    }
+
+    override val healthConnectSyncDirection: Flow<String> = observeSetting(
+        SettingsPreferenceKeys.HEALTH_CONNECT_SYNC_DIRECTION.name,
+        "BOTH"
+    )
+
+    override suspend fun setHealthConnectSyncDirection(direction: String) {
+        saveSetting(SettingsPreferenceKeys.HEALTH_CONNECT_SYNC_DIRECTION.name, direction)
+    }
+
+    override val healthConnectUserId: Flow<Int> = observeSetting(
+        SettingsPreferenceKeys.HEALTH_CONNECT_USER_ID.name,
+        -1
+    )
+
+    override suspend fun setHealthConnectUserId(userId: Int) {
+        saveSetting(SettingsPreferenceKeys.HEALTH_CONNECT_USER_ID.name, userId)
+    }
+
+    override val healthConnectLastSyncTime: Flow<Long> = observeSetting(
+        SettingsPreferenceKeys.HEALTH_CONNECT_LAST_SYNC_TIME.name,
+        0L
+    )
+
+    override suspend fun setHealthConnectLastSyncTime(timestamp: Long) {
+        saveSetting(SettingsPreferenceKeys.HEALTH_CONNECT_LAST_SYNC_TIME.name, timestamp)
+    }
+
+    override val isBackgroundScaleSyncEnabled: Flow<Boolean> = observeSetting(
+        SettingsPreferenceKeys.BACKGROUND_SCALE_SYNC_ENABLED.name,
+        true
+    )
+
+    override suspend fun setBackgroundScaleSyncEnabled(enabled: Boolean) {
+        saveSetting(SettingsPreferenceKeys.BACKGROUND_SCALE_SYNC_ENABLED.name, enabled)
+    }
+
+    override val backgroundSyncWindowStartHour: Flow<Int> = observeSetting(
+        SettingsPreferenceKeys.BACKGROUND_SYNC_WINDOW_START_HOUR.name,
+        8
+    )
+
+    override suspend fun setBackgroundSyncWindowStartHour(hour: Int) {
+        saveSetting(SettingsPreferenceKeys.BACKGROUND_SYNC_WINDOW_START_HOUR.name, hour)
+    }
+
+    override val backgroundSyncWindowStartMinute: Flow<Int> = observeSetting(
+        SettingsPreferenceKeys.BACKGROUND_SYNC_WINDOW_START_MINUTE.name,
+        0
+    )
+
+    override suspend fun setBackgroundSyncWindowStartMinute(minute: Int) {
+        saveSetting(SettingsPreferenceKeys.BACKGROUND_SYNC_WINDOW_START_MINUTE.name, minute)
+    }
+
+    override val backgroundSyncWindowDurationMinutes: Flow<Int> = observeSetting(
+        SettingsPreferenceKeys.BACKGROUND_SYNC_WINDOW_DURATION_MINUTES.name,
+        45
+    )
+
+    override suspend fun setBackgroundSyncWindowDurationMinutes(minutes: Int) {
+        saveSetting(SettingsPreferenceKeys.BACKGROUND_SYNC_WINDOW_DURATION_MINUTES.name, minutes)
+    }
+
+    override val backgroundSyncLastMeasuredDate: Flow<String?> = observeSetting(
+        SettingsPreferenceKeys.BACKGROUND_SYNC_LAST_MEASURED_DATE.name,
+        null
+    )
+
+    override suspend fun setBackgroundSyncLastMeasuredDate(date: String?) {
+        if (date != null) {
+            saveSetting(SettingsPreferenceKeys.BACKGROUND_SYNC_LAST_MEASURED_DATE.name, date)
+        } else {
+            dataStore.edit { it.remove(SettingsPreferenceKeys.BACKGROUND_SYNC_LAST_MEASURED_DATE) }
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

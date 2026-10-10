@@ -1,6 +1,6 @@
 <resources>
     <!-- App & General -->
-    <string name="app_name" translatable="false">openScale</string>
+    <string name="app_name" translatable="false">myScale</string>
     <string name="sync_app_unreachable_hint">Last change wasn\'t synchronized. Please open openScale-sync and run a manual sync.</string>
     <string name="sync_app_open_action">Open</string>
     <string name="app_logo_content_description">App Logo</string>
@@ -379,7 +379,7 @@
     <string name="developer_banner_active">Developer mode is active — no measurements will be saved.</string>
     <string name="developer_banner_enable_logs_hint">Please enable log file: Settings → General → Enable log file.</string>
     <string name="developer_mode_dialog_title">Enable developer mode?</string>
-    <string name="developer_mode_dialog_message">openScale will only log the Bluetooth traffic of %1$s for diagnostics. As long as developer mode is active, no measurement is saved. You can switch it off again on the Bluetooth screen or in the device settings.</string>
+    <string name="developer_mode_dialog_message">myScale will only log the Bluetooth traffic of %1$s for diagnostics. As long as developer mode is active, no measurement is saved. You can switch it off again on the Bluetooth screen or in the device settings.</string>
     <string name="developer_mode_dialog_replaces">%1$s becomes your saved scale and replaces %2$s.</string>
     <string name="developer_mode_dialog_confirm_button">Enable</string>
     <string name="developer_mode_disable_action">Disable</string>
@@ -418,6 +418,21 @@
     <string name="developer_section_title">Developer</string>
     <string name="danger_zone_title">Danger Zone</string>
     <string name="auto_connect_on_startup_title">Auto-connect on startup</string>
+    <string name="auto_connect_on_startup_desc">Automatically connect and listen for your scale whenever myScale is opened.</string>
+    <string name="background_scale_sync_title">Background scale sync</string>
+    <string name="background_scale_sync_desc">Listen for your scale during a daily window without opening the app, sync to Google Health Connect, and stop immediately to conserve battery.</string>
+    <string name="background_scale_window_title">Daily weigh-in window</string>
+    <string name="background_scale_window_time_label">Start time</string>
+    <string name="background_scale_window_time_desc">Time of day to start listening for your morning weigh-in</string>
+    <string name="background_scale_window_duration_label">Listening duration</string>
+    <string name="background_scale_window_duration_desc">How long to listen before sleeping until tomorrow</string>
+    <string name="background_scale_window_duration_minutes">%1$d minutes</string>
+    <string name="background_scale_notification_channel">myScale Background Sync</string>
+    <string name="background_scale_notification_channel_desc">Keeps myScale listening for Xiaomi Scale 2 measurements in the background.</string>
+    <string name="background_scale_service_listening">Listening for Xiaomi Body Composition Scale 2…</string>
+    <string name="background_scale_service_connecting">Scale detected — Connecting…</string>
+    <string name="background_scale_service_measuring">Connected — Reading measurement…</string>
+    <string name="background_scale_service_synced">Measured %1$s kg — Synced to Health Connect</string>
 
     <!-- Scale Configuration (generic, shown when a handler declares config fields) -->
     <string name="scale_configuration_title">Scale Configuration</string>
@@ -468,7 +483,7 @@
     <string name="enable_bluetooth_button">Enable Bluetooth</string>
     <string name="error_icon_desc">Error icon</string>
     <string name="compatibility_dialog_title">Important Notice</string>
-    <string name="bluetooth_compatibility_disclaimer">openScale is an open-source project, and I don\'t own every scale. Please note that compatibility cannot be guaranteed in all cases, as Bluetooth protocols may change or be undocumented.\n\nAs an open-source project, pull requests and contributions to improve scale support are very welcome!</string>
+    <string name="bluetooth_compatibility_disclaimer">myScale is customized for the Xiaomi Body Composition Scale 2 with Google Health Connect sync.\n\nOriginally forked from the openScale open-source project.</string>
     <string name="compatibility_dialog_confirm_button">Acknowledge &amp; Save</string>
     <string name="go_to_project_website_button">Go to Project Website</string>
 
@@ -637,7 +652,7 @@
     <string name="reminder_disabled_snackbar">Reminder disabled</string>
     <string name="reminder_default_text">Time to weight</string>
     <string name="reminder_channel_name">Reminders</string>
-    <string name="reminder_notification_title">openScale</string>
+    <string name="reminder_notification_title">myScale</string>
     <string name="settings_reminder_days_label">Days</string>
     <string name="permission_denied">Notifications permission denied</string>
     <string name="settings_appearance_title">Appearance</string>
@@ -867,8 +882,8 @@
     <string name="bluetooth_scale_info_measuring_weight">Measuring weight: %.2f</string>
     <string name="bluetooth_scale_error_max_users_reached">Max. number of concurrent scale users reached</string>
 
-    <string name="permission_read_write_data_description">read/write openScale data, including user information and all saved measurements</string>
-    <string name="permission_read_write_data_label">Read and Write openScale data</string>
+    <string name="permission_read_write_data_description">read/write myScale data, including user information and all saved measurements</string>
+    <string name="permission_read_write_data_label">Read and Write myScale data</string>
 
     <string name="dialog_bt_interaction_title_choose_user">Select User on Scale</string>
     <string name="dialog_bt_interaction_desc_choose_user_default">Select your user from the list or create a new one.</string>
@@ -1005,4 +1020,48 @@
     <string name="dialog_message_export_photos">Export only the CSV, or a ZIP file with the CSV and all photos? The ZIP can be imported again, photos included.</string>
     <string name="action_export_csv_only">CSV only</string>
     <string name="action_export_zip_with_photos">ZIP with photos</string>
+    <!-- Google Health Connect Sync -->
+    <string name="settings_item_health_connect">Google Health Connect</string>
+    <string name="health_connect_settings_title">Google Health Connect</string>
+    <string name="health_connect_sync_enable">Enable Health Connect Sync</string>
+    <string name="health_connect_sync_enable_desc">Synchronize weight and body composition data with Health Connect</string>
+    <string name="health_connect_sync_direction_title">Sync Direction</string>
+    <string name="health_connect_sync_direction_export">Export</string>
+    <string name="health_connect_sync_direction_import">Import</string>
+    <string name="health_connect_sync_direction_both">Both</string>
+    <string name="health_connect_sync_direction_export_desc">myScale → Health Connect</string>
+    <string name="health_connect_sync_direction_import_desc">Health Connect → myScale</string>
+    <string name="health_connect_sync_direction_both_desc">myScale ⇄ Health Connect</string>
+    <string name="health_connect_user_title">Synced user</string>
+    <string name="health_connect_user_desc">Health Connect stores data for one person on this device. Select which user to synchronize.</string>
+    <string name="health_connect_sync_now">Sync Now</string>
+    <string name="health_connect_syncing">Syncing…</string>
+    <string name="health_connect_last_synced">Last synced: %1$s</string>
+    <string name="health_connect_never_synced">Never synced</string>
+    <string name="health_connect_get_health_connect_button">Get Health Connect</string>
+    <string name="health_connect_not_available_text">Health Connect is not available on this device.</string>
+    <string name="health_connect_request_permissions_button">Grant Permissions</string>
+    <string name="health_connect_permission_not_granted">Health Connect permissions not granted</string>
+    <string name="health_connect_permissions_granted">All required permissions granted</string>
+    <string name="health_connect_connected_text">Health Connect connected successfully</string>
+    <string name="health_connect_sync_success">Synced successfully (%1$d exported, %2$d imported)</string>
+    <string name="health_connect_sync_failed">Sync failed: %1$s</string>
+
+    <string name="rationale_title">How myScale uses your Health Connect data</string>
+    <string name="rationale_intro">myScale connects the measurements recorded from your scale with Health Connect. All your health data remains completely private on your device.</string>
+    <string name="rationale_write_title">Data written to Health Connect</string>
+    <string name="rationale_write_text">Weight, body fat, body water mass, bone mass, lean body mass and basal metabolic rate from your myScale measurements are written to Health Connect, so that other health apps on this device can use them.</string>
+    <string name="rationale_read_title">Data read from Health Connect</string>
+    <string name="rationale_read_text">Weight, body fat, body water mass, bone mass and lean body mass recorded by other apps can be read and added to your myScale history so that measurements taken elsewhere are preserved. This occurs when the sync direction is set to Both or Import.</string>
+    <string name="rationale_privacy_title">Your data</string>
+    <string name="rationale_privacy_text">Your health data stays on your device. myScale has no internet access, no advertisements, no tracking, and no external servers.</string>
+    <string name="rationale_privacy_link">myScale (fork of openScale)</string>
+    <string name="rationale_privacy_url" translatable="false">https://github.com/oliexdev/openScale</string>
+
+    <string name="disclosure_title">Before you continue</string>
+    <string name="disclosure_write">myScale will write your scale measurements to Health Connect (weight, body fat, body water mass, bone mass, lean body mass and basal metabolic rate), allowing other apps on your device to access them.</string>
+    <string name="disclosure_read">Because the sync direction includes import, myScale will also read measurements written by other apps to Health Connect and add them to your history.</string>
+    <string name="disclosure_how">Your data is stored locally on your device and is never sent to external servers or third parties.</string>
+    <string name="disclosure_accept">Accept</string>
+    <string name="disclosure_decline">Not now</string>
 </resources>

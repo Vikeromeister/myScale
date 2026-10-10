@@ -17,6 +17,7 @@
  */
 package com.health.openscale.ui.screen.settings
 
+import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,11 +34,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -61,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -68,13 +75,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.health.openscale.R
+import com.health.openscale.core.bluetooth.BackgroundScaleScheduler
+import com.health.openscale.core.bluetooth.BackgroundScaleService
 import com.health.openscale.core.bluetooth.scales.TuningProfile
 import com.health.openscale.core.data.InputFieldType
 import com.health.openscale.core.data.MeasurementTypeIcon
 import com.health.openscale.core.data.UnitType
 import com.health.openscale.ui.screen.dialog.NumberInputDialog
+import com.health.openscale.ui.screen.dialog.TimeInputDialog
 import com.health.openscale.ui.shared.SharedViewModel
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 /**
  * Screen to manage all settings for a specific, saved Bluetooth device.
@@ -87,6 +98,7 @@ fun BluetoothDetailScreen(
     bluetoothViewModel: BluetoothViewModel
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val resources = LocalResources.current
 
     // --- Observe state from ViewModel ---
@@ -105,6 +117,11 @@ fun BluetoothDetailScreen(
     val availableTuningProfiles = remember { TuningProfile.entries.toList() }
     var showToleranceDialog by remember { mutableStateOf(false) }
     val autoConnectOnStartup by bluetoothViewModel.autoConnectOnStartup.collectAsStateWithLifecycle(false)
+    val isBackgroundScaleSyncEnabled by bluetoothViewModel.isBackgroundScaleSyncEnabled.collectAsStateWithLifecycle(true)
+    val windowStartHour by bluetoothViewModel.backgroundSyncWindowStartHour.collectAsStateWithLifecycle(8)
+    val windowStartMinute by bluetoothViewModel.backgroundSyncWindowStartMinute.collectAsStateWithLifecycle(0)
+    val windowDurationMinutes by bluetoothViewModel.backgroundSyncWindowDurationMinutes.collectAsStateWithLifecycle(45)
+    var showTimePickerDialog by remember { mutableStateOf(false) }
 
     if (showToleranceDialog) {
         NumberInputDialog(
@@ -120,6 +137,32 @@ fun BluetoothDetailScreen(
                     bluetoothViewModel.setSmartAssignmentTolerancePercent(newValue.toIntOrNull() ?: 10)
                 }
                 showToleranceDialog = false
+            }
+        )
+    }
+
+    if (showTimePickerDialog) {
+        val initialTimestamp = remember(windowStartHour, windowStartMinute) {
+            Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, windowStartHour)
+                set(Calendar.MINUTE, windowStartMinute)
+            }.timeInMillis
+        }
+
+        TimeInputDialog(
+            title = stringResource(R.string.background_scale_window_time_label),
+            initialTimestamp = initialTimestamp,
+            measurementIcon = MeasurementTypeIcon.IC_DEFAULT,
+            iconBackgroundColor = MaterialTheme.colorScheme.secondaryContainer,
+            onDismiss = { showTimePickerDialog = false },
+            onConfirm = { newTimestamp ->
+                val cal = Calendar.getInstance().apply { timeInMillis = newTimestamp }
+                val newHour = cal.get(Calendar.HOUR_OF_DAY)
+                val newMinute = cal.get(Calendar.MINUTE)
+                bluetoothViewModel.setBackgroundSyncWindowStartHour(newHour)
+                bluetoothViewModel.setBackgroundSyncWindowStartMinute(newMinute)
+                BackgroundScaleScheduler.scheduleNext(context)
+                showTimePickerDialog = false
             }
         )
     }
@@ -197,6 +240,7 @@ fun BluetoothDetailScreen(
         SettingsRow(
             modifier    = Modifier.padding(horizontal = 16.dp),
             label       = stringResource(R.string.auto_connect_on_startup_title),
+            description = stringResource(R.string.auto_connect_on_startup_desc),
             icon        = Icons.Default.BluetoothConnected,
             onClick     = { scope.launch { bluetoothViewModel.setAutoConnectOnStartup(!autoConnectOnStartup) } }
         ) {
@@ -204,6 +248,109 @@ fun BluetoothDetailScreen(
                 checked         = autoConnectOnStartup,
                 onCheckedChange = null,
             )
+        }
+        SettingsRow(
+            modifier    = Modifier.padding(horizontal = 16.dp),
+            label       = stringResource(R.string.background_scale_sync_title),
+            description = stringResource(R.string.background_scale_sync_desc),
+            icon        = Icons.Default.Sync,
+            onClick     = {
+                val next = !isBackgroundScaleSyncEnabled
+                bluetoothViewModel.setBackgroundScaleSyncEnabled(next)
+                if (next) {
+                    BackgroundScaleScheduler.scheduleNext(context)
+                } else {
+                    BackgroundScaleScheduler.cancelAlarm(context)
+                    BackgroundScaleService.stop(context)
+                }
+            }
+        ) {
+            Switch(
+                checked         = isBackgroundScaleSyncEnabled,
+                onCheckedChange = null,
+            )
+        }
+
+        AnimatedVisibility(visible = isBackgroundScaleSyncEnabled) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = stringResource(R.string.background_scale_window_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val formattedTime = remember(windowStartHour, windowStartMinute) {
+                        val cal = Calendar.getInstance().apply {
+                            set(Calendar.HOUR_OF_DAY, windowStartHour)
+                            set(Calendar.MINUTE, windowStartMinute)
+                        }
+                        DateFormat.getTimeFormat(context).format(cal.time)
+                    }
+
+                    SettingsRow(
+                        label = stringResource(R.string.background_scale_window_time_label),
+                        description = stringResource(R.string.background_scale_window_time_desc),
+                        icon = Icons.Default.Schedule,
+                        onClick = { showTimePickerDialog = true }
+                    ) {
+                        Text(
+                            text = formattedTime,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    var showDurationMenu by remember { mutableStateOf(false) }
+                    val durationOptions = remember { listOf(15, 30, 45, 60, 90) }
+
+                    Box {
+                        SettingsRow(
+                            label = stringResource(R.string.background_scale_window_duration_label),
+                            description = stringResource(R.string.background_scale_window_duration_desc),
+                            icon = Icons.Default.Timer,
+                            onClick = { showDurationMenu = true }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = stringResource(R.string.background_scale_window_duration_minutes, windowDurationMinutes),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showDurationMenu,
+                            onDismissRequest = { showDurationMenu = false }
+                        ) {
+                            durationOptions.forEach { minutes ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.background_scale_window_duration_minutes, minutes)) },
+                                    onClick = {
+                                        bluetoothViewModel.setBackgroundSyncWindowDurationMinutes(minutes)
+                                        BackgroundScaleScheduler.scheduleNext(context)
+                                        showDurationMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {

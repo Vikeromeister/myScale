@@ -73,6 +73,10 @@ class BluetoothViewModel @Inject constructor(
     val smartAssignmentTolerancePercent = settingsFacade.smartAssignmentTolerancePercent
     val smartAssignmentIgnoreOutsideTolerance = settingsFacade.smartAssignmentIgnoreOutsideTolerance
     val autoConnectOnStartup = settingsFacade.autoConnectOnStartup
+    val isBackgroundScaleSyncEnabled = settingsFacade.isBackgroundScaleSyncEnabled
+    val backgroundSyncWindowStartHour = settingsFacade.backgroundSyncWindowStartHour
+    val backgroundSyncWindowStartMinute = settingsFacade.backgroundSyncWindowStartMinute
+    val backgroundSyncWindowDurationMinutes = settingsFacade.backgroundSyncWindowDurationMinutes
     val developerModeEnabled = settingsFacade.developerModeEnabled
 
     fun setSmartAssignmentEnabled(enabled: Boolean) = viewModelScope.launch {
@@ -89,6 +93,22 @@ class BluetoothViewModel @Inject constructor(
 
     fun setAutoConnectOnStartup(enabled: Boolean) = viewModelScope.launch {
         settingsFacade.setAutoConnectOnStartup(enabled)
+    }
+
+    fun setBackgroundScaleSyncEnabled(enabled: Boolean) = viewModelScope.launch {
+        settingsFacade.setBackgroundScaleSyncEnabled(enabled)
+    }
+
+    fun setBackgroundSyncWindowStartHour(hour: Int) = viewModelScope.launch {
+        settingsFacade.setBackgroundSyncWindowStartHour(hour)
+    }
+
+    fun setBackgroundSyncWindowStartMinute(minute: Int) = viewModelScope.launch {
+        settingsFacade.setBackgroundSyncWindowStartMinute(minute)
+    }
+
+    fun setBackgroundSyncWindowDurationMinutes(minutes: Int) = viewModelScope.launch {
+        settingsFacade.setBackgroundSyncWindowDurationMinutes(minutes)
     }
 
     fun setDeveloperMode(enabled: Boolean) = viewModelScope.launch {

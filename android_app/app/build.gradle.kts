@@ -32,7 +32,7 @@ android {
         versionCode = 77
         versionName = "3.1.3"
 
-        manifestPlaceholders["appName"] = "openScale"
+        manifestPlaceholders["appName"] = "myScale"
         manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
         manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_round"
 
@@ -100,8 +100,9 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher_dev"
-            manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_dev_round"
+            manifestPlaceholders["appName"] = "myScale"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_round"
         }
 
         release {
@@ -119,7 +120,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-beta"
-            manifestPlaceholders["appName"] = "openScale beta"
+            manifestPlaceholders["appName"] = "myScale beta"
             manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher_beta"
             manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_beta_round"
         }
@@ -129,9 +130,9 @@ android {
             signingConfig = signingConfigs.getByName("oss")
             applicationIdSuffix = ".oss"
             versionNameSuffix = "-oss"
-            manifestPlaceholders["appName"] = "openScale"
-            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher_beta"
-            manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_beta_round"
+            manifestPlaceholders["appName"] = "myScale"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_round"
         }
     }
 
@@ -166,9 +167,9 @@ androidComponents {
     onVariants { variant ->
         // Include the version number for every build type except debug.
         val baseName = if (variant.buildType == "debug") {
-            "openScale-${variant.buildType}"
+            "myScale-${variant.buildType}"
         } else {
-            "openScale-${android.defaultConfig.versionName}-${variant.buildType}"
+            "myScale-${android.defaultConfig.versionName}-${variant.buildType}"
         }
 
         // APK naming. outputFileName is the official replacement for the removed
@@ -264,6 +265,9 @@ dependencies {
 
     // BouncyCastle for AES-CCM decryption (Xiaomi S400 scale)
     implementation(libs.bouncycastle)
+
+    // Health Connect
+    implementation(libs.androidx.health.connect.client)
 
     // Test dependencies
     testImplementation(libs.junit)

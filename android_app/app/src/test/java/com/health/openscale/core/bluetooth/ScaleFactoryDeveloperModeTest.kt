@@ -33,31 +33,14 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 
-/**
- * Developer mode used to be encoded by renaming the saved device to `"Debug"`, which let the
- * diagnostic handler win by name match and destroyed the scale's identity in the process
- * (issue #1478). It is a setting of its own now, and these tests pin the routing that replaces it:
- * the registry decides while the mode is off, the diagnostic handler wins while it is on — for
- * known and unknown scales alike — and the device name is never consulted.
- *
- * A broadcast-only scale makes the override observable without reaching into the adapter: its
- * normal route is a [com.health.openscale.core.bluetooth.scales.BroadcastScaleAdapter], while the
- * GATT-based diagnostic handler yields a
- * [com.health.openscale.core.bluetooth.scales.GattScaleAdapter].
- */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ScaleFactoryDeveloperModeTest {
 
     private val app: Application get() = ApplicationProvider.getApplicationContext()
 
-    /** Broadcast-only scale (see `EufyC20Handler`), used to tell the two routes apart. */
-    private val BROADCAST_SCALE = "EUFY C20"
+    private val XIAOMI_SCALE = "MIBFS"
 
-    /** Name-matched GATT scale — the one from issue #1478. */
-    private val GATT_SCALE = "SANITAS SBF70"
-
-    /** A factory wired to an isolated DataStore, so the developer-mode flag can be flipped per test. */
     private fun factoryWithSettings(): Pair<ScaleFactory, SettingsFacade> {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val settings = RoomTestSupport.settingsFacadeFor(
@@ -77,8 +60,8 @@ class ScaleFactoryDeveloperModeTest {
     fun `developer mode off keeps the registry in charge`() {
         val (factory, _) = factoryWithSettings()
 
-        assertThat(factory.adapterFor(GATT_SCALE)).isEqualTo("GattScaleAdapter")
-        assertThat(factory.adapterFor(BROADCAST_SCALE)).isEqualTo("BroadcastScaleAdapter")
+        assertThat(factory.adapterFor(XIAOMI_SCALE)).isEqualTo("GattScaleAdapter")
+        assertThat(factory.adapterFor("NoSuchScale")).isNull()
     }
 
     @Test
@@ -86,21 +69,18 @@ class ScaleFactoryDeveloperModeTest {
         val (factory, settings) = factoryWithSettings()
         settings.setDeveloperModeEnabled(true)
 
-        // The broadcast scale switching adapters is the proof that the override, not the registry,
-        // picked the handler.
-        assertThat(factory.adapterFor(BROADCAST_SCALE)).isEqualTo("GattScaleAdapter")
-        assertThat(factory.adapterFor(GATT_SCALE)).isEqualTo("GattScaleAdapter")
+        assertThat(factory.adapterFor(XIAOMI_SCALE)).isEqualTo("GattScaleAdapter")
     }
 
     @Test
     fun `developer mode leaves the reported driver of the saved scale untouched`() = runTest {
         val (factory, settings) = factoryWithSettings()
-        val before = factory.getDeviceSupportFor(ScaleCatalog.device(GATT_SCALE))
+        val before = factory.getDeviceSupportFor(ScaleCatalog.device(XIAOMI_SCALE))
 
         settings.setDeveloperModeEnabled(true)
 
-        assertThat(before?.displayName).isEqualTo("Sanitas SBF70 / SilverCrest SBF75 / Crane")
-        assertThat(factory.getDeviceSupportFor(ScaleCatalog.device(GATT_SCALE))?.displayName)
+        assertThat(before?.displayName).isEqualTo("Xiaomi Body Composition Scale 2")
+        assertThat(factory.getDeviceSupportFor(ScaleCatalog.device(XIAOMI_SCALE))?.displayName)
             .isEqualTo(before?.displayName)
     }
 
@@ -121,7 +101,6 @@ class ScaleFactoryDeveloperModeTest {
 
         assertThat(debug.supportFor(ScaleCatalog.device("Debug"))).isNull()
         assertThat(debug.supportFor(ScaleCatalog.device("debug"))).isNull()
-        // …and it is no longer part of the ordered registry either.
         assertThat(ScaleFactory.createHandlers().map { it.javaClass.simpleName })
             .doesNotContain(DebugGattHandler::class.java.simpleName)
     }
