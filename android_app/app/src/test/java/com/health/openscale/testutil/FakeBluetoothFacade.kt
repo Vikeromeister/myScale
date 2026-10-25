@@ -44,6 +44,7 @@ class FakeBluetoothFacade : BluetoothFacade {
     override val pendingUserInteractionEvent = MutableStateFlow<BluetoothEvent.UserInteractionRequired?>(null)
     override val savedDevice = MutableStateFlow<ScannedDeviceInfo?>(null)
     override val savedDeviceSupport = MutableStateFlow<DeviceSupport?>(null)
+    override val liveWeighingState = MutableStateFlow<com.health.openscale.core.bluetooth.LiveWeighingState>(com.health.openscale.core.bluetooth.LiveWeighingState.Idle)
 
     // --- test knobs / call markers ---
     var bluetoothEnabled = true
@@ -58,6 +59,10 @@ class FakeBluetoothFacade : BluetoothFacade {
     var clearErrorsCalled = false
     var clearPendingCalled = false
     var feedback: Pair<BluetoothEvent.UserInteractionType, Any>? = null
+    var startForegroundMonitoringCalled = false
+    var stopForegroundMonitoringCalled = false
+    var startLiveWeighingSessionCalled = false
+    var resetLiveWeighingStateCalled = false
     var closeCalled = false
 
     override fun startScan(durationMs: Long) { startScanDurationMs = durationMs; isScanning.value = true }
@@ -74,6 +79,13 @@ class FakeBluetoothFacade : BluetoothFacade {
         feedback = type to feedbackData
     }
     override fun isBluetoothEnabled(): Boolean = bluetoothEnabled
+    override fun startForegroundScaleMonitoring() { startForegroundMonitoringCalled = true }
+    override fun stopForegroundScaleMonitoring() { stopForegroundMonitoringCalled = true }
+    override fun startLiveWeighingSession() { startLiveWeighingSessionCalled = true }
+    override fun resetLiveWeighingState() {
+        resetLiveWeighingStateCalled = true
+        liveWeighingState.value = com.health.openscale.core.bluetooth.LiveWeighingState.Idle
+    }
     override fun close() { closeCalled = true }
 
     @Composable

@@ -182,11 +182,7 @@ fun rememberBluetoothActionButton(
                         sharedViewModel.setPendingReferenceUserForBle(null)
                         sharedViewModel.setPendingAssistedWeighingUser(currentUser)
                     } else {
-                        sharedViewModel.showSnackbar(
-                            message = resources.getString(R.string.snackbar_bluetooth_attempting_connection, deviceName),
-                            duration = SnackbarDuration.Short
-                        )
-                        LogManager.d(TAG, "User clicked bluetooth icon connect → trying to connect to saved device $deviceName")
+                        LogManager.d(TAG, "User clicked bluetooth icon connect → connecting to $deviceName")
 
                         sharedViewModel.setPendingReferenceUserForBle(null)
                         bluetoothViewModel.connectToSavedDevice()

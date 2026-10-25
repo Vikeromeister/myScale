@@ -26,6 +26,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.health.openscale.core.bluetooth.BackgroundScaleService
 import com.health.openscale.core.bluetooth.BluetoothEvent
+import com.health.openscale.core.bluetooth.ForegroundScaleMonitor
+import com.health.openscale.core.bluetooth.LiveWeighingState
 import com.health.openscale.core.bluetooth.ScaleFactory
 import com.health.openscale.core.bluetooth.data.ScaleUser
 import com.health.openscale.core.bluetooth.scales.DeviceSupport
@@ -73,6 +75,8 @@ interface BluetoothFacade {
     val savedDevice: StateFlow<ScannedDeviceInfo?>
     val savedDeviceSupport: StateFlow<DeviceSupport?>
 
+    val liveWeighingState: StateFlow<LiveWeighingState>
+
     fun startScan(durationMs: Long)
     fun stopScan()
     fun connectToSavedDevice()
@@ -85,6 +89,10 @@ interface BluetoothFacade {
     fun clearPendingUserInteraction()
     fun provideUserInteractionFeedback(type: BluetoothEvent.UserInteractionType, feedbackData: Any)
     fun isBluetoothEnabled(): Boolean
+    fun startForegroundScaleMonitoring()
+    fun stopForegroundScaleMonitoring()
+    fun startLiveWeighingSession()
+    fun resetLiveWeighingState()
     fun close()
 
     @Composable
@@ -109,6 +117,7 @@ class BluetoothFacadeImpl @Inject constructor(
     private val measurementFacade: MeasurementFacade,
     private val userFacade: UserFacade,
     private val settingsFacade: SettingsFacade,
+    private val foregroundScaleMonitor: ForegroundScaleMonitor,
 ) : BluetoothFacade {
     private val TAG = "BluetoothFacade"
 
@@ -136,6 +145,9 @@ class BluetoothFacadeImpl @Inject constructor(
 
     override val pendingUserInteractionEvent: StateFlow<BluetoothEvent.UserInteractionRequired?> =
         connection.userInteractionRequiredEvent
+
+    override val liveWeighingState: StateFlow<LiveWeighingState> =
+        foregroundScaleMonitor.liveWeighingState
 
     override fun clearPendingUserInteraction() {
         connection.clearUserInteractionEvent()
@@ -185,6 +197,20 @@ class BluetoothFacadeImpl @Inject constructor(
 
     init {
         observeCurrentUser()
+        scope.launch {
+            connection.savedMeasurementEvents.collect { info ->
+                foregroundScaleMonitor.onMeasurementSavedFromBle(
+                    measurementId = info.measurementId,
+                    userId = info.userId,
+                    weightKg = info.weightKg,
+                    bodyFatPercent = info.bodyFatPercent,
+                    musclePercent = info.musclePercent,
+                    waterPercent = info.waterPercent,
+                    impedanceOhm = info.impedanceOhm,
+                    deviceName = info.deviceName
+                )
+            }
+        }
     }
 
     private fun observeCurrentUser() {
@@ -218,6 +244,12 @@ class BluetoothFacadeImpl @Inject constructor(
 
     override fun connectToSavedDevice() {
         scope.launch {
+            val liveState = foregroundScaleMonitor.liveWeighingState.value
+            if (liveState is LiveWeighingState.WaitingForScale || liveState is LiveWeighingState.Measuring) {
+                LogManager.i(TAG, "Live weighing session is active; ignoring GATT connect request to preserve advertisement streaming")
+                return@launch
+            }
+            foregroundScaleMonitor.stopMonitoring()
             val dev = savedDevice.value ?: settingsFacade.observeSavedDevice().first()
             if (dev == null) {
                 LogManager.d(TAG, "No saved device snapshot found.")
@@ -256,10 +288,6 @@ class BluetoothFacadeImpl @Inject constructor(
     override fun saveAsPreferred(device: ScannedDeviceInfo) {
         scope.launch {
             settingsFacade.saveSavedDevice(device)
-            val bgEnabled = settingsFacade.isBackgroundScaleSyncEnabled.first()
-            if (bgEnabled) {
-                BackgroundScaleService.start(application)
-            }
         }
     }
 
@@ -293,9 +321,27 @@ class BluetoothFacadeImpl @Inject constructor(
         return mgr?.adapter?.isEnabled ?: false
     }
 
+    override fun startForegroundScaleMonitoring() {
+        foregroundScaleMonitor.startMonitoring()
+    }
+
+    override fun stopForegroundScaleMonitoring() {
+        foregroundScaleMonitor.stopMonitoring()
+    }
+
+    override fun startLiveWeighingSession() {
+        disconnect()
+        foregroundScaleMonitor.startLiveWeighingSession()
+    }
+
+    override fun resetLiveWeighingState() {
+        foregroundScaleMonitor.resetState()
+    }
+
     override fun close() {
         scanner.close()
         connection.close()
+        foregroundScaleMonitor.stopMonitoring()
     }
 }
 

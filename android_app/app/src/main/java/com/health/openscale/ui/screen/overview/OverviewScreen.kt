@@ -17,7 +17,13 @@
  */
 package com.health.openscale.ui.screen.overview
 
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -63,6 +69,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -93,12 +100,14 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale as ComposeLocale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -223,6 +232,41 @@ fun OverviewScreen(
         screenContextName = SettingsPreferenceKeys.OVERVIEW_SCREEN_CONTEXT,
     )
 
+    val savedDevice by bluetoothViewModel.savedDevice.collectAsState()
+
+    val permissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.values.all { it }) {
+            bluetoothViewModel.startLiveWeighingSession()
+        }
+    }
+
+    val enableBtLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            bluetoothViewModel.startLiveWeighingSession()
+        }
+    }
+
+    val onWeighInClicked = {
+        val hasScanPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+        val hasConnectPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        if (!hasScanPerm || !hasConnectPerm) {
+            permissionsLauncher.launch(
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                )
+            )
+        } else if (!bluetoothViewModel.isBluetoothEnabled()) {
+            enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+        } else {
+            bluetoothViewModel.startLiveWeighingSession()
+        }
+    }
+
     // ── Goals + UI helpers ────────────────────────────────────────────────────
     val allMeasurementTypes  by sharedViewModel.measurementTypes.collectAsState()
     val goalDialogContextData by sharedViewModel.userGoalDialogContext.collectAsState()
@@ -341,8 +385,9 @@ fun OverviewScreen(
     }
 
     // ── Main UI ───────────────────────────────────────────────────────────────
-    when {
-        overviewState is SharedViewModel.UiState.Loading -> {
+    Box(Modifier.fillMaxSize()) {
+        when {
+            overviewState is SharedViewModel.UiState.Loading -> {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
@@ -724,6 +769,29 @@ fun OverviewScreen(
             }
         }
     }
+
+    if (!isDrillDown && savedDevice != null && selectedUserId != null) {
+        ExtendedFloatingActionButton(
+            onClick = onWeighInClicked,
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_weight),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp)
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.action_weigh_in),
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+        )
+    }
+}
 
     // ── Goal dialog ───────────────────────────────────────────────────────────
     if (goalDialogContextData.showDialog) {

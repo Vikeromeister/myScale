@@ -105,6 +105,7 @@ import com.health.openscale.ui.navigation.Routes.getIconForRoute
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.ui.screen.dialog.AssistedWeighingDialog
 import com.health.openscale.ui.screen.dialog.BluetoothUserInteractionDialog
+import com.health.openscale.ui.screen.dialog.LiveWeighingDialog
 import com.health.openscale.ui.screen.settings.BluetoothViewModel
 import com.health.openscale.ui.screen.settings.SettingsViewModel
 import com.health.openscale.ui.theme.AppBrandBlue
@@ -249,6 +250,11 @@ fun AppNavigation(sharedViewModel: SharedViewModel) {
     BluetoothUserInteractionDialog(
         bluetoothViewModel = bluetoothViewModel,
         sharedViewModel = sharedViewModel
+    )
+
+    LiveWeighingDialog(
+        bluetoothViewModel = bluetoothViewModel,
+        navController = navController
     )
 
     ModalNavigationDrawer(

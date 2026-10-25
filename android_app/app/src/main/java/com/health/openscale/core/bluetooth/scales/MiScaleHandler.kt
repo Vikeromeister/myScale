@@ -458,39 +458,14 @@ class MiScaleHandler : ScaleDeviceHandler() {
 
     /** openScale's reverse-engineered Mi Fit algorithm (the original-app parity path). */
     private fun applyXiaomiComposition(m: ScaleMeasurement, impedance: Float, user: ScaleUser) {
-        val sex = if (user.gender == GenderType.MALE) 1 else 0
-        val lib = MiScaleLib(sex, user.age, user.bodyHeight)
-        m[MeasurementType.WATER] = Percent(lib.getWater((m[MeasurementType.WEIGHT]?.value ?: 0f), impedance))
-        m[MeasurementType.VISCERAL_FAT] = lib.getVisceralFat((m[MeasurementType.WEIGHT]?.value ?: 0f))
-        m[MeasurementType.BODY_FAT] = Percent(lib.getBodyFat((m[MeasurementType.WEIGHT]?.value ?: 0f), impedance))
-        m[MeasurementType.MUSCLE] = Percent(lib.getMuscle((m[MeasurementType.WEIGHT]?.value ?: 0f), impedance))
-        m[MeasurementType.LBM] = Kg(lib.getLBM((m[MeasurementType.WEIGHT]?.value ?: 0f), impedance))
-        m[MeasurementType.BONE] = Kg(lib.getBoneMass((m[MeasurementType.WEIGHT]?.value ?: 0f), impedance))
+        XiaomiBodyMetricsCalculator.applyXiaomiComposition(m, impedance, user)
     }
 
     /**
      * Scientific estimator; see [BodyMiScaleLib] for attribution and formula sources.
-     *
-     * Fields follow the same units as [applyXiaomiComposition]: fat/water/muscle/protein are
-     * percentages of body weight, bone/lbm are kg, bmr is kcal/day. Muscle mass (kg) is
-     * converted to a percentage to match the schema and the Xiaomi path.
      */
     private fun applyBodyMiScaleComposition(m: ScaleMeasurement, impedance: Float, user: ScaleUser) {
-        val lib = BodyMiScaleLib(user.gender, user.age, user.bodyHeight)
-
-        val lbmKg   = lib.getLbm((m[MeasurementType.WEIGHT]?.value ?: 0f), impedance)
-        val fatPct  = lib.getFat((m[MeasurementType.WEIGHT]?.value ?: 0f), lbmKg)
-        val boneKg  = lib.getBoneMass(lbmKg)
-        val muscleKg = lib.getMuscleMass((m[MeasurementType.WEIGHT]?.value ?: 0f), fatPct, boneKg)
-
-        m[MeasurementType.BODY_FAT] = Percent(fatPct)
-        m[MeasurementType.WATER] = Percent(lib.getWater(fatPct))
-        m[MeasurementType.MUSCLE] = Percent(if ((m[MeasurementType.WEIGHT]?.value ?: 0f) > 0f) muscleKg / (m[MeasurementType.WEIGHT]?.value ?: 0f) * 100f else 0f)
-        m[MeasurementType.LBM] = Kg(lbmKg)
-        m[MeasurementType.BONE] = Kg(boneKg)
-        m[MeasurementType.PROTEIN] = Percent(lib.getProtein((m[MeasurementType.WEIGHT]?.value ?: 0f), lbmKg))
-        m[MeasurementType.BMR] = Kcal(lib.getBmr((m[MeasurementType.WEIGHT]?.value ?: 0f)))
-        m[MeasurementType.VISCERAL_FAT] = lib.getVisceralFat((m[MeasurementType.WEIGHT]?.value ?: 0f))
+        XiaomiBodyMetricsCalculator.applyBodyMiScaleComposition(m, impedance, user)
     }
 
     /** History record (10 bytes): [status][weightLE(2)][yearLE(2)][mon][day][h][m][s] */

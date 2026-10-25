@@ -252,21 +252,23 @@ class MeasurementFacade @Inject constructor(
     suspend fun saveMeasurementFromBleDevice(
         measurement: Measurement,
         values: List<MeasurementValue>,
-    ) {
+    ): Result<SavedBleMeasurementResult> {
         val ref = pendingReferenceUser
-        if (ref != null) {
+        return if (ref != null) {
             val finalValues = transformation.applyAssistedWeighing(measurement, values, ref)
             crud.saveMeasurement(
                 measurement,
                 transformation.applyValueInheritance(measurement, finalValues)
-            )
+            ).map { id -> SavedBleMeasurementResult(id, measurement.userId) }
         } else {
             val finalMeasurement = transformation.applySmartUserAssignment(measurement, values)
             if (finalMeasurement != null) {
                 crud.saveMeasurement(
                     finalMeasurement,
                     transformation.applyValueInheritance(finalMeasurement, values)
-                )
+                ).map { id -> SavedBleMeasurementResult(id, finalMeasurement.userId) }
+            } else {
+                Result.failure(IllegalStateException("Smart user assignment rejected measurement"))
             }
         }
     }
@@ -360,3 +362,8 @@ class MeasurementFacade @Inject constructor(
         items: List<MeasurementWithValues>,
     ) = query.findClosestMeasurement(selectedTimestamp, items)
 }
+
+data class SavedBleMeasurementResult(
+    val measurementId: Int,
+    val userId: Int
+)

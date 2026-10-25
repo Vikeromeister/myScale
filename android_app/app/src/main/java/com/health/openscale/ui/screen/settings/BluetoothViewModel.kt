@@ -68,6 +68,7 @@ class BluetoothViewModel @Inject constructor(
     val pendingUserInteractionEvent = bt.pendingUserInteractionEvent
     val savedDevice = bt.savedDevice
     val savedDeviceSupport = bt.savedDeviceSupport
+    val liveWeighingState = bt.liveWeighingState
 
     val isSmartAssignmentEnabled = settingsFacade.isSmartAssignmentEnabled
     val smartAssignmentTolerancePercent = settingsFacade.smartAssignmentTolerancePercent
@@ -124,22 +125,6 @@ class BluetoothViewModel @Inject constructor(
                 _snackbarEvents.emit(evt)
             }
         }
-
-        // Auto-connect on startup
-        viewModelScope.launch {
-            val enabled = settingsFacade.autoConnectOnStartup.first()
-            if (!enabled) return@launch
-
-            val device = withTimeoutOrNull(1_500) {
-                bt.savedDevice
-                    .filter { it != null }
-                    .first()
-            }
-
-            if (device != null) {
-                bt.attemptAutoConnectToSavedDevice()
-            }
-        }
     }
 
     // --- Delegated actions ---
@@ -174,6 +159,10 @@ class BluetoothViewModel @Inject constructor(
         bt.provideUserInteractionFeedback(type, feedbackData)
 
     fun clearPendingUserInteraction() = bt.clearPendingUserInteraction()
+
+    fun startLiveWeighingSession() = bt.startLiveWeighingSession()
+
+    fun resetLiveWeighingState() = bt.resetLiveWeighingState()
 
     private fun emitSnack(
         resId: Int,

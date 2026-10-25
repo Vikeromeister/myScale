@@ -1064,4 +1064,21 @@
     <string name="disclosure_how">Your data is stored locally on your device and is never sent to external servers or third parties.</string>
     <string name="disclosure_accept">Accept</string>
     <string name="disclosure_decline">Not now</string>
+
+    <!-- Live Foreground Scale Weighing -->
+    <string name="live_weighing_title">Scale</string>
+    <string name="live_weighing_measuring_weight">Measuring weight…</string>
+    <string name="live_weighing_weight_locked">Weight locked</string>
+    <string name="live_weighing_measuring_impedance">Measuring body composition…</string>
+    <string name="live_weighing_keep_standing">Stay on scale with bare feet</string>
+    <string name="live_weighing_complete">Measurement complete!</string>
+    <string name="live_weighing_view_details">View Detailed Data</string>
+    <string name="live_weighing_dismiss">Dismiss</string>
+    <string name="live_weighing_body_fat">Body Fat</string>
+    <string name="live_weighing_muscle">Muscle</string>
+    <string name="live_weighing_water">Water</string>
+    <string name="live_weighing_waiting_title">Ready to weigh in</string>
+    <string name="live_weighing_waiting_subtitle">Step on the scale now with bare feet</string>
+    <string name="live_weighing_cancel">Cancel</string>
+    <string name="action_weigh_in">Weigh in</string>
 </resources>

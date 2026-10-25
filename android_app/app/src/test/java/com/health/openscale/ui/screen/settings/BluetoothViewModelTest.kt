@@ -132,6 +132,21 @@ class BluetoothViewModelTest {
         assertThat(vm.connectionError.value).isEqualTo("boom")
     }
 
+    @Test
+    fun liveWeighingState_passesThroughFromFacade() {
+        val measuring = com.health.openscale.core.bluetooth.LiveWeighingState.Measuring(
+            weightKg = 72.5f,
+            isStabilized = false,
+            isMeasuringImpedance = false
+        )
+        fake.liveWeighingState.value = measuring
+        assertThat(vm.liveWeighingState.value).isEqualTo(measuring)
+
+        vm.resetLiveWeighingState()
+        assertThat(fake.resetLiveWeighingStateCalled).isTrue()
+        assertThat(vm.liveWeighingState.value).isEqualTo(com.health.openscale.core.bluetooth.LiveWeighingState.Idle)
+    }
+
     // ---- snackbar mapping -------------------------------------------------------------------
 
     @Test

@@ -81,6 +81,22 @@ class BleConnector(
     private val _snackbarEvents = MutableSharedFlow<SnackbarEvent>(replay = 0, extraBufferCapacity = 1)
     val snackbarEvents: SharedFlow<SnackbarEvent> = _snackbarEvents.asSharedFlow()
 
+    /** Emitted whenever a measurement is successfully saved via the GATT connection path. */
+    data class SavedMeasurementInfo(
+        val measurementId: Int,
+        val userId: Int,
+        val weightKg: Float,
+        val bodyFatPercent: Float?,
+        val musclePercent: Float?,
+        val waterPercent: Float?,
+        val impedanceOhm: Float?,
+        val deviceName: String
+    )
+
+    private val _savedMeasurementEvents = MutableSharedFlow<SavedMeasurementInfo>(replay = 0, extraBufferCapacity = 4)
+    /** Emits each time a measurement is saved from BLE. Observers (e.g. ForegroundScaleMonitor) can bridge this into the live UI. */
+    val savedMeasurementEvents: SharedFlow<SavedMeasurementInfo> = _savedMeasurementEvents.asSharedFlow()
+
     private val _connectedDeviceName = MutableStateFlow<String?>(null)
 
     private val _connectedDeviceAddress = MutableStateFlow<String?>(null)
@@ -529,7 +545,9 @@ class BleConnector(
             }
 
             try {
-                val measurementId = measurementFacade.saveMeasurementFromBleDevice(newDbMeasurement, values)
+                val saveResult = measurementFacade.saveMeasurementFromBleDevice(newDbMeasurement, values)
+                val measurementId = saveResult.getOrNull()?.measurementId ?: 0
+                val assignedUserId = saveResult.getOrNull()?.userId ?: currentAppUserId ?: 0
                 LogManager.i(
                     TAG,
                     "Measurement from $deviceName for User $currentAppUserId saved (ID: $measurementId). Values: ${values.size}"
@@ -537,6 +555,21 @@ class BleConnector(
                 pendingSavedCount.incrementAndGet()
                 lastSavedArgs = listOf(measurementData[MeasurementType.WEIGHT]?.value ?: 0f, deviceName)
                 savedBurstSignal.tryEmit(Unit)
+
+                // Notify observers (e.g. ForegroundScaleMonitor for live weighing dialog)
+                val weightKg = measurementData[MeasurementType.WEIGHT]?.value ?: 0f
+                _savedMeasurementEvents.tryEmit(
+                    SavedMeasurementInfo(
+                        measurementId = measurementId,
+                        userId = assignedUserId,
+                        weightKg = weightKg,
+                        bodyFatPercent = measurementData[MeasurementType.BODY_FAT]?.value,
+                        musclePercent = measurementData[MeasurementType.MUSCLE]?.value,
+                        waterPercent = measurementData[MeasurementType.WATER]?.value,
+                        impedanceOhm = measurementData[MeasurementType.IMPEDANCE]?.value,
+                        deviceName = deviceName
+                    )
+                )
             } catch (e: Exception) {
                 LogManager.e(TAG, "Error saving measurement from $deviceName.", e)
                 _snackbarEvents.tryEmit(

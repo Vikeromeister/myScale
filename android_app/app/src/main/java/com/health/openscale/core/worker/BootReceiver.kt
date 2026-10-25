@@ -49,7 +49,6 @@ class BootReceiver : BroadcastReceiver() {
             CoroutineScope(Dispatchers.Default).launch {
                 reminderUseCase.rescheduleNext()
                 autoBackupUseCases.refreshSchedule()
-                com.health.openscale.core.bluetooth.BackgroundScaleScheduler.scheduleNext(appContext)
             }
         }
     }

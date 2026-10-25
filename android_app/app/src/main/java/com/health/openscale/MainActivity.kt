@@ -70,13 +70,16 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
-        checkAndScheduleBackgroundWindow()
-        checkAndAutoConnectScale()
+        // Permissions granted/updated
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Ensure any previously scheduled background scale alarms/services are stopped
+        BackgroundScaleScheduler.cancelAlarm(this)
+        BackgroundScaleService.stop(this)
 
         checkAndRequestPermissions()
 
@@ -125,10 +128,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        checkAndScheduleBackgroundWindow()
-        checkAndAutoConnectScale()
+    override fun onPause() {
+        super.onPause()
+        bluetoothFacade.stopForegroundScaleMonitoring()
     }
 
     private fun checkAndRequestPermissions() {
@@ -146,37 +148,6 @@ class MainActivity : ComponentActivity() {
 
         if (missing.isNotEmpty()) {
             permissionLauncher.launch(missing.toTypedArray())
-        } else {
-            checkAndScheduleBackgroundWindow()
-            checkAndAutoConnectScale()
-        }
-    }
-
-    private fun checkAndScheduleBackgroundWindow() {
-        lifecycleScope.launch {
-            val bgEnabled = settingsFacade.isBackgroundScaleSyncEnabled.first()
-            val hasScan = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
-            val hasConnect = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-            if (bgEnabled && hasScan && hasConnect) {
-                BackgroundScaleScheduler.scheduleNext(this@MainActivity)
-            }
-        }
-    }
-
-    private fun checkAndAutoConnectScale() {
-        lifecycleScope.launch {
-            val autoConnect = settingsFacade.autoConnectOnStartup.first()
-            val hasDevice = settingsFacade.observeSavedDevice().first() != null
-            val hasScan = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
-            val hasConnect = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-
-            if (autoConnect && hasDevice && hasScan && hasConnect && bluetoothFacade.isBluetoothEnabled()) {
-                val status = bluetoothFacade.connectionStatus.value
-                if (status == ConnectionStatus.DISCONNECTED || status == ConnectionStatus.FAILED) {
-                    LogManager.i(TAG, "Auto-connecting to saved scale on app startup")
-                    bluetoothFacade.attemptAutoConnectToSavedDevice()
-                }
-            }
         }
     }
 }
