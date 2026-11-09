@@ -204,6 +204,7 @@ androidComponents {
 // version onto the test APK, and the classes come from the app APK at runtime anyway.
 configurations.matching { it.name.contains("AndroidTest") }.configureEach {
     exclude(group = "androidx.concurrent")
+    exclude(group = "com.google.errorprone", module = "error_prone_annotations")
 }
 
 dependencies {
