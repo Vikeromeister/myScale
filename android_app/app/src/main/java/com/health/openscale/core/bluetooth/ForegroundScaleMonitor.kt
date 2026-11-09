@@ -76,9 +76,11 @@ sealed class LiveWeighingState {
     /**
      * Actively waiting for the user to step on the scale.
      * @param deviceName Scale name for display.
+     * @param sessionId Unique identifier for this weigh-in session.
      */
     data class WaitingForScale(
-        val deviceName: String? = null
+        val deviceName: String? = null,
+        val sessionId: Long = 0L
     ) : LiveWeighingState()
 
     /**
@@ -88,13 +90,15 @@ sealed class LiveWeighingState {
      * @param isMeasuringImpedance True when the scale is measuring electrical impedance.
      * @param unit Scale's native or preferred unit.
      * @param deviceName Scale name for display.
+     * @param sessionId Unique identifier for this weigh-in session.
      */
     data class Measuring(
         val weightKg: Float,
         val isStabilized: Boolean,
         val isMeasuringImpedance: Boolean,
         val unit: UnitType = UnitType.KG,
-        val deviceName: String? = null
+        val deviceName: String? = null,
+        val sessionId: Long = 0L
     ) : LiveWeighingState()
 
     /**
@@ -108,6 +112,7 @@ sealed class LiveWeighingState {
      * @param impedanceOhm Measured impedance in Ohms.
      * @param unit Unit type.
      * @param deviceName Scale name.
+     * @param sessionId Unique identifier for this weigh-in session.
      */
     data class Completed(
         val measurementId: Int,
@@ -118,24 +123,27 @@ sealed class LiveWeighingState {
         val waterPercent: Float? = null,
         val impedanceOhm: Float? = null,
         val unit: UnitType = UnitType.KG,
-        val deviceName: String? = null
+        val deviceName: String? = null,
+        val sessionId: Long = 0L
     ) : LiveWeighingState()
 }
 
 /**
  * Monitors Xiaomi smart scale BLE advertisements in the foreground.
  *
- * When the app is open in the foreground, this monitor passively scans for the saved
- * scale's advertisements using [ScanSettings.SCAN_MODE_LOW_LATENCY].
+ * When the user initiates a live weigh-in session, this monitor scans for the saved
+ * scale's advertisements using [ScanSettings.SCAN_MODE_LOW_LATENCY] with completely
+ * fresh session state.
  *
  * As soon as the user steps on the scale:
- * 1. Fluctuation phase: Advertised weight updates are forwarded in real time (<100ms lag)
+ * 1. Stale/cached packets broadcast by the scale on wake-up (from a previous weigh-in) are filtered out.
+ * 2. Fluctuation phase: Advertised weight updates are forwarded in real time (<100ms lag)
  *    to [liveWeighingState] as [LiveWeighingState.Measuring], in exact sync with the scale display.
- * 2. Stabilization phase: Once weight stabilizes, [LiveWeighingState.Measuring.isStabilized] is set
+ * 3. Stabilization phase: Once weight stabilizes, [LiveWeighingState.Measuring.isStabilized] is set
  *    to true and impedance measurement progress is indicated.
- * 3. Impedance completion: When the scale broadcasts completed impedance, all body metrics
+ * 4. Impedance completion: When the scale broadcasts completed impedance, all body metrics
  *    are computed, saved to the database via [MeasurementFacade], and emitted as
- *    [LiveWeighingState.Completed].
+ *    [LiveWeighingState.Completed] for 5 seconds before auto-dismissing.
  */
 @Singleton
 class ForegroundScaleMonitor @Inject constructor(
@@ -146,10 +154,15 @@ class ForegroundScaleMonitor @Inject constructor(
 ) {
     companion object {
         private const val TAG = "ForegroundScaleMonitor"
-        private const val INACTIVITY_TIMEOUT_MS = 12_000L
-        private const val IMPEDANCE_TIMEOUT_MS = 10_000L
-        private const val STEP_OFF_DEBOUNCE_MS = 3_000L
-        private const val COOLDOWN_DURATION_MS = 7_000L
+        private const val MIN_ACTIVE_WEIGHT_KG = 5.0f
+        internal const val WAITING_TIMEOUT_MS = 60_000L
+        internal const val MEASURING_INACTIVITY_TIMEOUT_MS = 30_000L
+        internal const val IMPEDANCE_TIMEOUT_MS = 15_000L
+        internal const val TARE_RETURN_TO_WAITING_DEBOUNCE_MS = 6_000L
+        internal const val POST_STABILIZATION_STEP_OFF_DEBOUNCE_MS = 3_000L
+        internal const val STABILIZED_WITHOUT_LIVE_WARMUP_MS = 2_000L
+        internal const val COMPLETED_DISPLAY_DURATION_MS = 5_000L
+        private const val COOLDOWN_DURATION_MS = 5_000L
     }
 
     private val monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -159,12 +172,22 @@ class ForegroundScaleMonitor @Inject constructor(
 
     private var isMonitoring = false
     private var bluetoothLeScanner: BluetoothLeScanner? = null
+    private var activeScanCallback: ScanCallback? = null
     private var currentSavedDevice: ScannedDeviceInfo? = null
 
+    private var sessionCounter: Long = 0L
+    private var activeSessionId: Long = 0L
+
+    private var sessionInitJob: Job? = null
     private var inactivityJob: Job? = null
     private var impedanceTimeoutJob: Job? = null
     private var stepOffJob: Job? = null
+    private var autoDismissJob: Job? = null
+
     private var lastStabilizedFrame: XiaomiAdvFrame? = null
+    private var hasSeenLiveWeight = false
+    private var stabilizedCandidateStartMs: Long = 0L
+    private var lastFinalizedScaleTimestampSeconds: Long? = null
     private var cooldownUntilMs: Long = 0L
     private var isFinalizing = false
 
@@ -176,8 +199,9 @@ class ForegroundScaleMonitor @Inject constructor(
         }
     }
 
-    private val scanCallback = object : ScanCallback() {
+    private fun createScanCallback(sessionId: Long): ScanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            if (sessionId != activeSessionId) return
             val state = _liveWeighingState.value
             if (isFinalizing || (state !is LiveWeighingState.WaitingForScale && state !is LiveWeighingState.Measuring)) {
                 return
@@ -192,136 +216,200 @@ class ForegroundScaleMonitor @Inject constructor(
             if (now < cooldownUntilMs) return
 
             val frame = XiaomiScaleAdvParser.parse(result.scanRecord) ?: return
-            handleAdvFrame(frame, saved.name)
+            handleAdvFrame(frame, saved.name, sessionId, now)
         }
 
         override fun onScanFailed(errorCode: Int) {
+            if (sessionId != activeSessionId) return
             LogManager.w(TAG, "BLE scan failed with code: $errorCode")
             isMonitoring = false
         }
     }
 
-    private fun handleAdvFrame(frame: XiaomiAdvFrame, deviceName: String) {
-        // 0. If already completed and showing results, ignore incoming packets until cooldown/reset
-        if (_liveWeighingState.value is LiveWeighingState.Completed) {
+    internal fun handleAdvFrame(
+        frame: XiaomiAdvFrame,
+        deviceName: String,
+        sessionId: Long = activeSessionId,
+        nowMs: Long = System.currentTimeMillis()
+    ) {
+        // 0. Ignore packets from superseded sessions or when already finalized/idle
+        if (sessionId != activeSessionId || isFinalizing) {
+            return
+        }
+        val currentState = _liveWeighingState.value
+        if (currentState !is LiveWeighingState.WaitingForScale && currentState !is LiveWeighingState.Measuring) {
             return
         }
 
-        // Branch 1: Completed impedance measurement arrived!
-        // This is the final and most complete packet on Mi Scale 2.
-        // Even if bit 7 (weightRemoved) is set or weight is low, this contains the full BIA metrics.
-        if (frame.hasImpedance && frame.impedanceOhm != null && frame.impedanceOhm > 0) {
-            stepOffJob?.cancel()
-            stepOffJob = null
-            finalizeMeasurement(frame, deviceName)
+        // Ignore packets carrying the exact same hardware scale timestamp as an already finalized weigh-in
+        if (lastFinalizedScaleTimestampSeconds != null &&
+            frame.scaleTimestampSeconds != null &&
+            frame.scaleTimestampSeconds == lastFinalizedScaleTimestampSeconds &&
+            (frame.isStabilized || frame.hasImpedance || frame.weightRemoved)
+        ) {
+            LogManager.d(TAG, "Ignoring stale scale packet with already-finalized timestamp ${frame.scaleTimestampSeconds}")
             return
         }
 
-        // Branch 2: Weight removed flag is set (and no impedance was in this packet)
-        if (frame.weightRemoved) {
-            if (_liveWeighingState.value is LiveWeighingState.WaitingForScale) {
-                // Ignore transient/cached load-removed frame while waiting for user to step on
+        // Phase 1: Waiting for a fresh live weigh-in to begin in this session.
+        // When the Xiaomi scale first wakes up as the user steps on it, its BLE radio initially
+        // broadcasts the previous measurement stored in its NVRAM (which has weightRemoved=true,
+        // hasImpedance=true, and/or isStabilized=true from yesterday or earlier).
+        if (!hasSeenLiveWeight) {
+            if (frame.weightRemoved || frame.weightKg < MIN_ACTIVE_WEIGHT_KG) {
+                stabilizedCandidateStartMs = 0L
                 return
             }
-            if (lastStabilizedFrame != null) {
-                // User stepped off after weight stabilization -> finalize with the stabilized reading
-                LogManager.i(TAG, "Weight removed after stabilization; finalizing measurement")
-                finalizeMeasurement(lastStabilizedFrame!!, deviceName)
-            } else {
-                // User stepped off before stabilization, or transient load-removed signal during step-on.
-                // Debounce for 3 seconds instead of instantly resetting to Idle!
-                if (stepOffJob == null || !stepOffJob!!.isActive) {
-                    stepOffJob = monitorScope.launch {
-                        delay(STEP_OFF_DEBOUNCE_MS)
-                        if (_liveWeighingState.value is LiveWeighingState.Measuring && lastStabilizedFrame == null) {
-                            LogManager.d(TAG, "Step-off debounce expired without stabilization; resetting to Idle")
-                            resetState()
-                        }
-                    }
-                }
+            if (frame.hasImpedance) {
+                // A live weigh-in never starts with impedance already completed before measuring weight.
+                LogManager.d(TAG, "Ignoring stale completed-impedance packet (${frame.weightKg}kg, ${frame.impedanceOhm}Ω) while waiting for new weigh-in")
+                stabilizedCandidateStartMs = 0L
+                return
             }
-            return
+            if (!frame.isStabilized) {
+                // Live fluctuating weight detected! The scale is actively measuring the user now.
+                hasSeenLiveWeight = true
+                stabilizedCandidateStartMs = 0L
+            } else {
+                // Stabilized packet without impedance while we haven't seen fluctuating weight yet.
+                // Require 2 seconds of continuous stabilized packets (without tare or weightRemoved)
+                // so a brief wake-up NVRAM packet from a previous weight-only session is never latched.
+                if (stabilizedCandidateStartMs == 0L) {
+                    stabilizedCandidateStartMs = nowMs
+                    return
+                }
+                if (nowMs - stabilizedCandidateStartMs < STABILIZED_WITHOUT_LIVE_WARMUP_MS) {
+                    return
+                }
+                hasSeenLiveWeight = true
+                stabilizedCandidateStartMs = 0L
+            }
         }
 
-        // Branch 3: Active weight on scale (user is standing on it, >= 5.0 kg)
-        if (frame.weightKg >= 5.0f) {
+        // Phase 2: Active live weigh-in is confirmed for this session.
+
+        // Branch 1: Live fluctuating weight on scale (user standing on scale, weight not yet locked)
+        if (!frame.isStabilized && !frame.weightRemoved && frame.weightKg >= MIN_ACTIVE_WEIGHT_KG) {
             stepOffJob?.cancel()
             stepOffJob = null
-            if (_liveWeighingState.value is LiveWeighingState.WaitingForScale) {
-                inactivityJob?.cancel()
-                inactivityJob = null
+            impedanceTimeoutJob?.cancel()
+            impedanceTimeoutJob = null
+            lastStabilizedFrame = null
+
+            _liveWeighingState.value = LiveWeighingState.Measuring(
+                weightKg = frame.weightKg,
+                isStabilized = false,
+                isMeasuringImpedance = false,
+                unit = frame.unit,
+                deviceName = deviceName,
+                sessionId = sessionId
+            )
+
+            armMeasuringInactivityTimeout(sessionId)
+            return
+        }
+
+        // Branch 2: Completed impedance measurement arrived during active session!
+        if (frame.hasImpedance && frame.impedanceOhm != null && frame.impedanceOhm > 0f) {
+            val stabilized = lastStabilizedFrame
+            if (stabilized != null &&
+                frame.weightKg >= MIN_ACTIVE_WEIGHT_KG &&
+                kotlin.math.abs(frame.weightKg - stabilized.weightKg) > 3.0f
+            ) {
+                LogManager.w(TAG, "Ignoring impedance packet with mismatched weight (${frame.weightKg}kg vs stabilized ${stabilized.weightKg}kg)")
+                return
             }
 
-            if (frame.isStabilized) {
-                // Weight has stabilized!
-                lastStabilizedFrame = frame
-                inactivityJob?.cancel()
-                inactivityJob = null
+            val finalFrame = if (frame.weightKg < MIN_ACTIVE_WEIGHT_KG && stabilized != null) {
+                frame.copy(weightKg = stabilized.weightKg)
+            } else {
+                frame
+            }
 
-                if (frame.isVersion2) {
-                    // Update UI to indicate weight is locked and scale is measuring BIA
-                    _liveWeighingState.value = LiveWeighingState.Measuring(
-                        weightKg = frame.weightKg,
-                        isStabilized = true,
-                        isMeasuringImpedance = true,
-                        unit = frame.unit,
-                        deviceName = deviceName
-                    )
+            stepOffJob?.cancel()
+            stepOffJob = null
+            impedanceTimeoutJob?.cancel()
+            impedanceTimeoutJob = null
+            inactivityJob?.cancel()
+            inactivityJob = null
+            finalizeMeasurement(finalFrame, deviceName, sessionId)
+            return
+        }
 
-                    // Arm 10-second fallback timer in case user wears socks or scale fails to measure impedance
-                    if (impedanceTimeoutJob == null || !impedanceTimeoutJob!!.isActive) {
-                        impedanceTimeoutJob = monitorScope.launch {
-                            delay(IMPEDANCE_TIMEOUT_MS)
-                            if (_liveWeighingState.value !is LiveWeighingState.Completed) {
-                                LogManager.i(TAG, "Impedance timeout reached; finalizing with stabilized weight only")
-                                finalizeMeasurement(frame, deviceName)
-                            }
+        // Branch 3: Weight has stabilized on the scale (and impedance is now being measured on v2)
+        if (frame.isStabilized && !frame.weightRemoved && frame.weightKg >= MIN_ACTIVE_WEIGHT_KG) {
+            stepOffJob?.cancel()
+            stepOffJob = null
+            inactivityJob?.cancel()
+            inactivityJob = null
+            lastStabilizedFrame = frame
+
+            if (frame.isVersion2) {
+                // Update UI to indicate weight is locked and scale is measuring BIA
+                _liveWeighingState.value = LiveWeighingState.Measuring(
+                    weightKg = frame.weightKg,
+                    isStabilized = true,
+                    isMeasuringImpedance = true,
+                    unit = frame.unit,
+                    deviceName = deviceName,
+                    sessionId = sessionId
+                )
+
+                // Arm 15-second fallback timer in case user wears socks or scale fails to measure impedance
+                if (impedanceTimeoutJob == null || !impedanceTimeoutJob!!.isActive) {
+                    impedanceTimeoutJob = monitorScope.launch {
+                        delay(IMPEDANCE_TIMEOUT_MS)
+                        if (sessionId == activeSessionId && _liveWeighingState.value !is LiveWeighingState.Completed) {
+                            val fallback = lastStabilizedFrame ?: frame
+                            LogManager.i(TAG, "Impedance timeout reached; finalizing with stabilized weight only")
+                            finalizeMeasurement(fallback, deviceName, sessionId)
                         }
                     }
-                } else {
-                    // Mi Scale 1 (v1) has no impedance hardware -> finalize immediately upon stabilization
-                    finalizeMeasurement(frame, deviceName)
                 }
             } else {
-                // Weight is fluctuating (user stepping on, shifting weight)
-                // Only update fluctuating state if we haven't already locked a stabilized reading
-                if (lastStabilizedFrame == null) {
-                    _liveWeighingState.value = LiveWeighingState.Measuring(
-                        weightKg = frame.weightKg,
-                        isStabilized = false,
-                        isMeasuringImpedance = false,
-                        unit = frame.unit,
-                        deviceName = deviceName
-                    )
-
-                    // 12-second watchdog in case scale shuts off or user abandons weighing
-                    inactivityJob?.cancel()
-                    inactivityJob = monitorScope.launch {
-                        delay(INACTIVITY_TIMEOUT_MS)
-                        if (_liveWeighingState.value is LiveWeighingState.Measuring && lastStabilizedFrame == null) {
-                            LogManager.d(TAG, "Inactivity timeout during fluctuating weight; resetting to Idle")
-                            resetState()
-                        }
-                    }
-                }
+                // Mi Scale 1 (v1) has no impedance hardware -> finalize immediately upon stabilization
+                finalizeMeasurement(frame, deviceName, sessionId)
             }
             return
         }
 
-        // Branch 4: Low/zero weight (< 5.0 kg) without weightRemoved flag (tare or step-off)
+        // Branch 4: Weight removed flag is set OR low/zero weight (< 5.0 kg) during Measuring
         if (_liveWeighingState.value is LiveWeighingState.Measuring) {
             if (lastStabilizedFrame != null) {
-                // User stepped off after weight stabilized
-                LogManager.i(TAG, "Weight dropped < 5kg after stabilization; finalizing measurement")
-                finalizeMeasurement(lastStabilizedFrame!!, deviceName)
-            } else {
-                // Transient tare / stepping on scale (< 5kg)
+                // Weight already locked and we are waiting for body composition (impedance).
+                // Debounce for 3 seconds before finalizing weight-only so transient frames or
+                // stepping off right as BIA finishes still captures the final impedance packet.
                 if (stepOffJob == null || !stepOffJob!!.isActive) {
                     stepOffJob = monitorScope.launch {
-                        delay(STEP_OFF_DEBOUNCE_MS)
-                        if (_liveWeighingState.value is LiveWeighingState.Measuring && lastStabilizedFrame == null) {
-                            LogManager.d(TAG, "Tare/low weight debounce expired; resetting to Idle")
-                            resetState()
+                        delay(POST_STABILIZATION_STEP_OFF_DEBOUNCE_MS)
+                        if (sessionId == activeSessionId &&
+                            _liveWeighingState.value is LiveWeighingState.Measuring &&
+                            lastStabilizedFrame != null
+                        ) {
+                            LogManager.i(TAG, "Weight removed/dropped after stabilization; finalizing with stabilized reading")
+                            finalizeMeasurement(lastStabilizedFrame!!, deviceName, sessionId)
+                        }
+                    }
+                }
+            } else {
+                // Weight has NOT stabilized yet (e.g. scale taring to 0.0 kg after initial step-on).
+                // Do NOT close the weigh-in window! After 6 seconds without weight, return to
+                // WaitingForScale so the window stays open and ready.
+                if (stepOffJob == null || !stepOffJob!!.isActive) {
+                    stepOffJob = monitorScope.launch {
+                        delay(TARE_RETURN_TO_WAITING_DEBOUNCE_MS)
+                        if (sessionId == activeSessionId &&
+                            _liveWeighingState.value is LiveWeighingState.Measuring &&
+                            lastStabilizedFrame == null
+                        ) {
+                            LogManager.d(TAG, "Tare/low weight persisted before stabilization; returning to WaitingForScale")
+                            hasSeenLiveWeight = false
+                            stabilizedCandidateStartMs = 0L
+                            _liveWeighingState.value = LiveWeighingState.WaitingForScale(
+                                deviceName = deviceName,
+                                sessionId = sessionId
+                            )
+                            armWaitingTimeout(sessionId, deviceName)
                         }
                     }
                 }
@@ -329,9 +417,37 @@ class ForegroundScaleMonitor @Inject constructor(
         }
     }
 
-    private fun finalizeMeasurement(frame: XiaomiAdvFrame, deviceName: String) {
-        if (isFinalizing || _liveWeighingState.value is LiveWeighingState.Completed) return
+    private fun armWaitingTimeout(sessionId: Long, deviceName: String?) {
+        inactivityJob?.cancel()
+        inactivityJob = monitorScope.launch {
+            delay(WAITING_TIMEOUT_MS)
+            if (sessionId == activeSessionId && _liveWeighingState.value is LiveWeighingState.WaitingForScale) {
+                LogManager.d(TAG, "Live weigh-in waiting session timed out (${WAITING_TIMEOUT_MS}ms) for $deviceName")
+                resetState()
+            }
+        }
+    }
+
+    private fun armMeasuringInactivityTimeout(sessionId: Long) {
+        inactivityJob?.cancel()
+        inactivityJob = monitorScope.launch {
+            delay(MEASURING_INACTIVITY_TIMEOUT_MS)
+            if (sessionId == activeSessionId &&
+                _liveWeighingState.value is LiveWeighingState.Measuring &&
+                lastStabilizedFrame == null
+            ) {
+                LogManager.d(TAG, "Inactivity timeout during fluctuating weight; resetting to Idle")
+                resetState()
+            }
+        }
+    }
+
+    private fun finalizeMeasurement(frame: XiaomiAdvFrame, deviceName: String, sessionId: Long) {
+        if (sessionId != activeSessionId || isFinalizing || _liveWeighingState.value is LiveWeighingState.Completed) return
         isFinalizing = true
+        if (frame.scaleTimestampSeconds != null) {
+            lastFinalizedScaleTimestampSeconds = frame.scaleTimestampSeconds
+        }
 
         cooldownUntilMs = System.currentTimeMillis() + COOLDOWN_DURATION_MS
         stopActiveScan()
@@ -357,8 +473,9 @@ class ForegroundScaleMonitor @Inject constructor(
                     gender = currentSelected.gender
                 }
 
+                val nowDate = Date()
                 val m = ScaleMeasurement().apply {
-                    dateTime = Date()
+                    dateTime = nowDate
                     this[MeasurementType.WEIGHT] = Kg(frame.weightKg)
                     userId = currentSelected.id
                 }
@@ -388,6 +505,19 @@ class ForegroundScaleMonitor @Inject constructor(
                     Pair(directId, currentSelected.id)
                 }
 
+                // Update MiScaleHandler's last imported timestamp so GATT history never re-imports this weigh-in
+                val nowSec = (nowDate.time / 1000L).toInt()
+                val frameSec = frame.scaleTimestampSeconds?.toInt() ?: 0
+                val latestTsSec = maxOf(nowSec, frameSec)
+                runCatching {
+                    settingsFacade.saveSetting("ble/MiScaleHandler/last_imported_ts_$assignedUserId", latestTsSec)
+                    if (assignedUserId != currentSelected.id) {
+                        settingsFacade.saveSetting("ble/MiScaleHandler/last_imported_ts_${currentSelected.id}", latestTsSec)
+                    }
+                }
+
+                if (sessionId != activeSessionId) return@launch
+
                 _liveWeighingState.value = LiveWeighingState.Completed(
                     measurementId = measurementId,
                     userId = assignedUserId,
@@ -397,12 +527,15 @@ class ForegroundScaleMonitor @Inject constructor(
                     waterPercent = m[MeasurementType.WATER]?.value,
                     impedanceOhm = frame.impedanceOhm,
                     unit = frame.unit,
-                    deviceName = deviceName
+                    deviceName = deviceName,
+                    sessionId = sessionId
                 )
-                LogManager.i(TAG, "Live measurement saved successfully (id=$measurementId, user=$assignedUserId, weight=${frame.weightKg}kg)")
+                scheduleCompletedAutoDismiss(sessionId)
+                LogManager.i(TAG, "Live measurement saved successfully (id=$measurementId, user=$assignedUserId, weight=${frame.weightKg}kg, imp=${frame.impedanceOhm}Ω)")
             } catch (t: Throwable) {
                 LogManager.e(TAG, "Exception during live measurement finalization", t)
                 cooldownUntilMs = 0L
+                if (sessionId != activeSessionId) return@launch
                 _liveWeighingState.value = LiveWeighingState.Completed(
                     measurementId = 0,
                     userId = 0,
@@ -412,8 +545,21 @@ class ForegroundScaleMonitor @Inject constructor(
                     waterPercent = null,
                     impedanceOhm = frame.impedanceOhm,
                     unit = frame.unit,
-                    deviceName = deviceName
+                    deviceName = deviceName,
+                    sessionId = sessionId
                 )
+                scheduleCompletedAutoDismiss(sessionId)
+            }
+        }
+    }
+
+    private fun scheduleCompletedAutoDismiss(sessionId: Long) {
+        autoDismissJob?.cancel()
+        autoDismissJob = monitorScope.launch {
+            delay(COMPLETED_DISPLAY_DURATION_MS)
+            if (sessionId == activeSessionId && _liveWeighingState.value is LiveWeighingState.Completed) {
+                LogManager.i(TAG, "Auto-dismissing completed weigh-in window after ${COMPLETED_DISPLAY_DURATION_MS}ms")
+                resetState()
             }
         }
     }
@@ -486,9 +632,15 @@ class ForegroundScaleMonitor @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun stopActiveScan() {
-        if (!isMonitoring) return
+        val cb = activeScanCallback
+        activeScanCallback = null
+        if (!isMonitoring && cb == null) return
         try {
-            bluetoothLeScanner?.stopScan(scanCallback)
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val scanner = bluetoothManager?.adapter?.bluetoothLeScanner ?: bluetoothLeScanner
+            if (cb != null) {
+                scanner?.stopScan(cb)
+            }
             LogManager.i(TAG, "Active BLE scan stopped")
         } catch (e: Exception) {
             LogManager.e(TAG, "Error stopping BLE scan", e)
@@ -503,20 +655,36 @@ class ForegroundScaleMonitor @Inject constructor(
     }
 
     fun stopMonitoring() {
-        stopActiveScan()
-        cancelTimers()
-        isFinalizing = false
-        if (_liveWeighingState.value !is LiveWeighingState.Completed) {
-            _liveWeighingState.value = LiveWeighingState.Idle
-        }
+        resetState()
     }
 
     fun resetState() {
+        activeSessionId = ++sessionCounter
+        sessionInitJob?.cancel()
+        sessionInitJob = null
         stopActiveScan()
         cancelTimers()
         isFinalizing = false
         lastStabilizedFrame = null
+        hasSeenLiveWeight = false
+        stabilizedCandidateStartMs = 0L
+        cooldownUntilMs = 0L
         _liveWeighingState.value = LiveWeighingState.Idle
+    }
+
+    /**
+     * Starts a fresh weigh-in session for tests without requiring Android Bluetooth hardware.
+     */
+    internal fun startSessionForTesting(deviceName: String = "Mi Scale 2"): Long {
+        resetState()
+        val sessionId = ++sessionCounter
+        activeSessionId = sessionId
+        _liveWeighingState.value = LiveWeighingState.WaitingForScale(
+            deviceName = deviceName,
+            sessionId = sessionId
+        )
+        armWaitingTimeout(sessionId, deviceName)
+        return sessionId
     }
 
     @SuppressLint("MissingPermission")
@@ -533,50 +701,52 @@ class ForegroundScaleMonitor @Inject constructor(
             return
         }
 
-        monitorScope.launch {
-            val saved = currentSavedDevice ?: settingsFacade.observeSavedDevice().first()
+        // Completely reset all previous weigh-in state before starting the new session
+        resetState()
+        val sessionId = ++sessionCounter
+        activeSessionId = sessionId
+
+        currentSavedDevice?.let { cached ->
+            _liveWeighingState.value = LiveWeighingState.WaitingForScale(
+                deviceName = cached.name,
+                sessionId = sessionId
+            )
+        }
+
+        sessionInitJob = monitorScope.launch {
+            val saved = settingsFacade.observeSavedDevice().first() ?: currentSavedDevice
             currentSavedDevice = saved
             if (saved == null) {
                 LogManager.d(TAG, "No scale device saved, cannot start live weighing session")
-                return@launch
-            }
-
-            cancelTimers()
-            isFinalizing = false
-            lastStabilizedFrame = null
-            cooldownUntilMs = 0L
-
-            _liveWeighingState.value = LiveWeighingState.WaitingForScale(deviceName = saved.name)
-
-            // Force fresh low-latency scan so duty cycle is at 100%
-            restartLowLatencyScan(saved)
-
-            // 45-second timeout waiting for user to step on scale
-            inactivityJob = monitorScope.launch {
-                delay(45_000L)
-                if (_liveWeighingState.value is LiveWeighingState.WaitingForScale) {
-                    LogManager.d(TAG, "Live weigh-in waiting session timed out (45s)")
+                if (sessionId == activeSessionId) {
                     resetState()
                 }
+                return@launch
             }
+            if (sessionId != activeSessionId) return@launch
+
+            _liveWeighingState.value = LiveWeighingState.WaitingForScale(
+                deviceName = saved.name,
+                sessionId = sessionId
+            )
+
+            // Force fresh low-latency scan so duty cycle is at 100%
+            restartLowLatencyScan(saved, sessionId)
+
+            // 60-second timeout waiting for user to step on scale
+            armWaitingTimeout(sessionId, saved.name)
         }
     }
 
     @SuppressLint("MissingPermission")
-    private fun restartLowLatencyScan(saved: ScannedDeviceInfo) {
+    private fun restartLowLatencyScan(saved: ScannedDeviceInfo, sessionId: Long) {
+        stopActiveScan()
+
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val adapter = bluetoothManager?.adapter ?: return
         if (!adapter.isEnabled) return
         val scanner = adapter.bluetoothLeScanner ?: return
         bluetoothLeScanner = scanner
-
-        try {
-            if (isMonitoring) {
-                scanner.stopScan(scanCallback)
-            }
-        } catch (e: Exception) {
-            LogManager.w(TAG, "Error stopping scan before restart: ${e.message}")
-        }
 
         val filters = listOf(
             ScanFilter.Builder()
@@ -591,15 +761,22 @@ class ForegroundScaleMonitor @Inject constructor(
         )
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+            .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+            .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
             .setReportDelay(0)
             .build()
 
+        val callback = createScanCallback(sessionId)
+        activeScanCallback = callback
+
         try {
-            scanner.startScan(filters, settings, scanCallback)
+            scanner.startScan(filters, settings, callback)
             isMonitoring = true
-            LogManager.i(TAG, "Active low-latency BLE scan started for ${saved.name} (${saved.address})")
+            LogManager.i(TAG, "Active low-latency BLE scan started for ${saved.name} (${saved.address}), sessionId=$sessionId")
         } catch (e: Exception) {
             LogManager.e(TAG, "Error starting active low-latency BLE scan", e)
+            activeScanCallback = null
             isMonitoring = false
         }
     }
@@ -614,25 +791,11 @@ class ForegroundScaleMonitor @Inject constructor(
         impedanceOhm: Float? = null,
         deviceName: String? = null
     ) {
-        if (_liveWeighingState.value is LiveWeighingState.WaitingForScale ||
-            _liveWeighingState.value is LiveWeighingState.Measuring
-        ) {
-            stopActiveScan()
-            cancelTimers()
-            isFinalizing = false
-            _liveWeighingState.value = LiveWeighingState.Completed(
-                measurementId = measurementId,
-                userId = userId,
-                weightKg = weightKg,
-                bodyFatPercent = bodyFatPercent,
-                musclePercent = musclePercent,
-                waterPercent = waterPercent,
-                impedanceOhm = impedanceOhm,
-                unit = UnitType.KG,
-                deviceName = deviceName
-            )
-            LogManager.i(TAG, "Live weighing state transitioned to Completed via GATT saved measurement (id=$measurementId)")
-        }
+        // When an interactive BLE advertisement weigh-in session is active, ForegroundScaleMonitor
+        // handles the entire measurement lifecycle (fluctuation -> stabilization -> BIA -> save)
+        // directly from live advertisements. Do not let asynchronous GATT history imports hijack
+        // or prematurely terminate the live weigh-in window.
+        LogManager.d(TAG, "Ignoring external GATT measurement callback (id=$measurementId) in ForegroundScaleMonitor")
     }
 
     private fun cancelTimers() {
@@ -642,5 +805,7 @@ class ForegroundScaleMonitor @Inject constructor(
         impedanceTimeoutJob = null
         stepOffJob?.cancel()
         stepOffJob = null
+        autoDismissJob?.cancel()
+        autoDismissJob = null
     }
 }

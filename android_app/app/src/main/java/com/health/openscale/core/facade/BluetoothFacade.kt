@@ -330,6 +330,7 @@ class BluetoothFacadeImpl @Inject constructor(
     }
 
     override fun startLiveWeighingSession() {
+        stopScan()
         disconnect()
         foregroundScaleMonitor.startLiveWeighingSession()
     }

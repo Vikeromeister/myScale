@@ -128,9 +128,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        bluetoothFacade.stopForegroundScaleMonitoring()
+    override fun onResume() {
+        super.onResume()
+        BackgroundScaleScheduler.cancelAlarm(this)
+        BackgroundScaleService.stop(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            bluetoothFacade.stopForegroundScaleMonitoring()
+        }
     }
 
     private fun checkAndRequestPermissions() {

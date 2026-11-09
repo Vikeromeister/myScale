@@ -187,7 +187,6 @@ class BackgroundScaleService : Service() {
         unregisterBluetoothReceiver()
         windowTimeoutJob?.cancel()
         serviceScope.cancel()
-        BackgroundScaleScheduler.scheduleNext(applicationContext)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

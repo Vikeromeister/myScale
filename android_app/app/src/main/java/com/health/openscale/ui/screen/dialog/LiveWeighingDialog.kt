@@ -39,11 +39,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.health.openscale.R
+import com.health.openscale.core.bluetooth.ForegroundScaleMonitor
 import com.health.openscale.core.bluetooth.LiveWeighingState
 import com.health.openscale.ui.navigation.Routes
 import com.health.openscale.ui.screen.settings.BluetoothViewModel
@@ -59,14 +62,14 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 
 /**
- * Global dialog that activates automatically when the user steps on a supported scale
- * (e.g. Xiaomi Mi Scale / Body Composition Scale 2) while the app is open.
+ * Global dialog that activates when the user initiates a live weigh-in session
+ * on a supported scale (e.g. Xiaomi Mi Scale / Body Composition Scale 2).
  *
  * It mirrors the official Zepp Life experience:
  * 1. Live fluctuating weight is displayed in real time in sync with the scale display.
  * 2. When weight locks, an impedance progress indicator prompts the user to remain standing.
- * 3. When impedance completes, a summary of body metrics is displayed and the app automatically
- *    navigates to the detailed measurement screen.
+ * 3. When impedance completes, a summary of body metrics is displayed for 5 seconds
+ *    before auto-dismissing.
  */
 @Composable
 fun LiveWeighingDialog(
@@ -80,10 +83,19 @@ fun LiveWeighingDialog(
         return
     }
 
-    // Auto-dismiss the pop-up window 4 seconds after a successful weigh-in
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val previousKeepScreenOn = view.keepScreenOn
+        view.keepScreenOn = true
+        onDispose {
+            view.keepScreenOn = previousKeepScreenOn
+        }
+    }
+
+    // Auto-dismiss the pop-up window 5 seconds after a successful weigh-in
     if (currentState is LiveWeighingState.Completed) {
-        LaunchedEffect(currentState) {
-            delay(4000)
+        LaunchedEffect(currentState.sessionId, currentState.measurementId) {
+            delay(ForegroundScaleMonitor.COMPLETED_DISPLAY_DURATION_MS)
             bluetoothViewModel.resetLiveWeighingState()
         }
     }

@@ -160,5 +160,26 @@ class XiaomiScaleAdvParserTest {
         assertThat(frame.weightRemoved).isTrue()
         assertThat(frame.impedanceOhm).isWithin(0.1f).of(520.0f)
         assertThat(frame.weightKg).isWithin(0.01f).of(65.4f)
+        assertThat(frame.scaleTimestampSeconds).isNotNull()
+    }
+
+    @Test
+    fun `parse181B treats 0xFFFE impedance sentinel as measuring rather than completed impedance`() {
+        // c0=0x02, c1=0x22 (stabilized=0x20, hasImpBit=0x02)
+        // Impedance bytes = 0xFE, 0xFF (65534 sentinel while BIA is still measuring or failed)
+        val payload = byteArrayOf(
+            0x02, 0x22,
+            0xEA.toByte(), 0x07, 10, 11, 10, 30, 15,
+            0xFE.toByte(), 0xFF.toByte(),
+            0x18, 0x33 // 65.4 kg
+        )
+
+        val frame = XiaomiScaleAdvParser.parse181B(payload)
+        assertThat(frame).isNotNull()
+        assertThat(frame!!.isStabilized).isTrue()
+        assertThat(frame.hasImpedance).isFalse()
+        assertThat(frame.impedanceOhm).isNull()
+        assertThat(frame.isImpedanceMeasuring).isTrue()
+        assertThat(frame.weightKg).isWithin(0.01f).of(65.4f)
     }
 }

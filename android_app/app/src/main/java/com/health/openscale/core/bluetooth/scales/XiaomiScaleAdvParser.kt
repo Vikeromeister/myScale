@@ -35,7 +35,9 @@ data class XiaomiAdvFrame(
     val weightRemoved: Boolean,
     val date: Date?,
     val unit: UnitType,
-    val isVersion2: Boolean
+    val isVersion2: Boolean,
+    val isImpedanceMeasuring: Boolean = false,
+    val scaleTimestampSeconds: Long? = null
 )
 
 object XiaomiScaleAdvParser {
@@ -44,6 +46,14 @@ object XiaomiScaleAdvParser {
 
     private val PARCEL_UUID_181B = ParcelUuid(UUID_BODY_COMPOSITION_181B)
     private val PARCEL_UUID_181D = ParcelUuid(UUID_WEIGHT_SCALE_181D)
+
+    /**
+     * Valid human bio-electrical impedance range in Ohms on Xiaomi Body Composition Scale 2.
+     * While the scale is actively measuring impedance (or if measurement fails), bytes 9..10
+     * carry 0xFFFE (65534) or 0xFFFF (65535) or 0, which must not be treated as a finished reading.
+     */
+    private const val MIN_VALID_IMPEDANCE_OHM = 1
+    private const val MAX_VALID_IMPEDANCE_OHM = 3000
 
     fun parse(scanRecord: ScanRecord?): XiaomiAdvFrame? {
         if (scanRecord == null) return null
@@ -80,9 +90,12 @@ object XiaomiScaleAdvParser {
         val second = if (d.size > 8) d[8].toInt() and 0xFF else 0
 
         val date = parseDate(year, month, day, hour, minute, second)
+        val scaleTimestampSeconds = parseRawScaleTimestampSeconds(year, month, day, hour, minute, second)
 
         val impRaw = ((d[10].toInt() and 0xFF) shl 8) or (d[9].toInt() and 0xFF)
-        val hasImpedance = hasImpBit && impRaw > 0
+        val hasImpedance = hasImpBit && impRaw in MIN_VALID_IMPEDANCE_OHM until MAX_VALID_IMPEDANCE_OHM
+        val isImpedanceMeasuring = isStabilized && !weightRemoved && !hasImpedance &&
+            (impRaw == 0xFFFE || !hasImpBit)
 
         val weightRaw = ((d[12].toInt() and 0xFF) shl 8) or (d[11].toInt() and 0xFF)
         val weightKg = when {
@@ -104,7 +117,9 @@ object XiaomiScaleAdvParser {
             weightRemoved = weightRemoved,
             date = date,
             unit = unit,
-            isVersion2 = true
+            isVersion2 = true,
+            isImpedanceMeasuring = isImpedanceMeasuring,
+            scaleTimestampSeconds = scaleTimestampSeconds
         )
     }
 
@@ -132,6 +147,7 @@ object XiaomiScaleAdvParser {
         val second = if (d.size > 9) d[9].toInt() and 0xFF else 0
 
         val date = parseDate(year, month, day, hour, minute, second)
+        val scaleTimestampSeconds = parseRawScaleTimestampSeconds(year, month, day, hour, minute, second)
 
         val unit = when {
             isLbs -> UnitType.LB
@@ -146,7 +162,9 @@ object XiaomiScaleAdvParser {
             weightRemoved = weightRemoved,
             date = date,
             unit = unit,
-            isVersion2 = false
+            isVersion2 = false,
+            isImpedanceMeasuring = false,
+            scaleTimestampSeconds = scaleTimestampSeconds
         )
     }
 
@@ -172,6 +190,18 @@ object XiaomiScaleAdvParser {
         }
         return null
     }
+
+    private fun parseRawScaleTimestampSeconds(y: Int, m: Int, d: Int, h: Int, min: Int, s: Int): Long? =
+        runCatching {
+            if (y < 1970 || m !in 1..12 || d !in 1..31 || h !in 0..23 || min !in 0..59 || s !in 0..59) {
+                return null
+            }
+            val sdf = SimpleDateFormat("yyyy/MM/dd/HH/mm/ss", Locale.US).apply {
+                timeZone = TimeZone.getDefault()
+                isLenient = false
+            }
+            sdf.parse("$y/$m/$d/$h/$min/$s")?.time?.let { it / 1000L }
+        }.getOrNull()
 
     private fun parseDate(y: Int, m: Int, d: Int, h: Int, min: Int, s: Int): Date? =
         runCatching {
