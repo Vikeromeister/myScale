@@ -688,6 +688,9 @@ class FakeBluetoothFacade @Inject constructor(private val scaleFactory: ScaleFac
     override val pendingUserInteractionEvent = MutableStateFlow<BluetoothEvent.UserInteractionRequired?>(null)
     override val savedDevice = MutableStateFlow<ScannedDeviceInfo?>(scale)
     override val savedDeviceSupport = MutableStateFlow<DeviceSupport?>(scaleFactory.getDeviceSupportFor(scale))
+    override val liveWeighingState = MutableStateFlow<com.health.openscale.core.bluetooth.LiveWeighingState>(
+        com.health.openscale.core.bluetooth.LiveWeighingState.Idle
+    )
 
     override fun startScan(durationMs: Long) {
         scannedDevices.value = listOf(
@@ -708,6 +711,10 @@ class FakeBluetoothFacade @Inject constructor(private val scaleFactory: ScaleFac
     override fun clearPendingUserInteraction() {}
     override fun provideUserInteractionFeedback(type: BluetoothEvent.UserInteractionType, feedbackData: Any) {}
     override fun isBluetoothEnabled() = true
+    override fun startForegroundScaleMonitoring() {}
+    override fun stopForegroundScaleMonitoring() {}
+    override fun startLiveWeighingSession() {}
+    override fun resetLiveWeighingState() {}
     override fun close() {}
 
     @Composable
