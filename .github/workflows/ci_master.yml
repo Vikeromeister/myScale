@@ -48,17 +48,17 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openScale-debug-apk
-          path: android_app/app/build/outputs/apk/debug/openScale-debug.apk
+          name: myScale-debug-apk
+          path: android_app/app/build/outputs/apk/debug/myScale-debug.apk
       - uses: "marvinpinto/action-automatic-releases@latest"
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag: "dev-build"
           prerelease: true
-          title: "openScale development build"
+          title: "myScale development build"
           files: |
-            android_app/app/build/outputs/apk/debug/openScale-debug.apk
+            android_app/app/build/outputs/apk/debug/myScale-debug.apk
 
   # Publish the "Supported scales in openScale" wiki page, generated from the handler registry by
   # ScaleCatalogTest. The page is a build artifact: hand edits in the wiki are overwritten, while
