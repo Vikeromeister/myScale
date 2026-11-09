@@ -385,6 +385,13 @@ class ForegroundScaleMonitorTest {
                 sessionId = sessionId,
                 nowMs = 6_000L
             )
+            val deadline = System.currentTimeMillis() + 5_000L
+            while (monitor.liveWeighingState.value !is LiveWeighingState.Completed &&
+                System.currentTimeMillis() < deadline
+            ) {
+                runCurrent()
+                Thread.sleep(10)
+            }
             runCurrent()
 
             val completed = monitor.liveWeighingState.value

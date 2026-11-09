@@ -1170,7 +1170,7 @@ class SettingsFacadeImpl @Inject constructor(
 
     override val isBackgroundScaleSyncEnabled: Flow<Boolean> = observeSetting(
         SettingsPreferenceKeys.BACKGROUND_SCALE_SYNC_ENABLED.name,
-        false
+        true
     )
 
     override suspend fun setBackgroundScaleSyncEnabled(enabled: Boolean) {
