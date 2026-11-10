@@ -29,8 +29,8 @@ android {
         applicationId = "com.health.openscale"
         minSdk = 31
         targetSdk = 37
-        versionCode = 77
-        versionName = "3.1.3"
+        versionCode = 78
+        versionName = "3.1.4"
 
         manifestPlaceholders["appName"] = "myScale"
         manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
@@ -40,6 +40,13 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
         create("release") {
             val keystorePropertiesFile = rootProject.file("../../openScale.keystore")
             val keystoreProperties = Properties()
@@ -98,6 +105,7 @@ android {
         }
 
         debug {
+            signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             manifestPlaceholders["appName"] = "myScale"
